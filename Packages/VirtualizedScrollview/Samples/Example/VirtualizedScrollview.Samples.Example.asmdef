@@ -1,0 +1,9 @@
+{
+	"name": "VirtualizedScrollview.Samples.Example",
+	"references": [
+		"VirtualizedScrollview.Runtime"
+	],
+	"optionalUnityReferences": [],
+	"includePlatforms": [],
+	"autoReferenced": true
+}

@@ -1,0 +1,27 @@
+{
+  "name": "com.oleggrizzly.virtualized-scrollview",
+  "displayName": "Virtualized Scrollview",
+  "version": "1.0.0",
+  "unity": "2022.3",
+  "description": "Virtualized ScrollView provides high-performance list and grid rendering for Unity UI.",
+  "author": {
+    "name": "Oleg Grizzly",
+    "email": "xew@list.ru",
+    "url": "https://github.com/OlegGrizzly"
+  },
+  "keywords": [
+    "scrollview",
+    "srcollrect",
+    "virtualised",
+    "runtime",
+    "tools"
+  ],
+  "dependencies": {},
+  "samples": [
+    {
+      "displayName": "Quick Start",
+      "description": "Usage examples for the package.",
+      "path": "Samples~/Example"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "VirtualizedScrollview.Editor",
+  "rootNamespace": "OlegGrizzly.VirtualizedScrollview.Editor",
+  "references": [
+    "VirtualizedScrollview.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ]
+}

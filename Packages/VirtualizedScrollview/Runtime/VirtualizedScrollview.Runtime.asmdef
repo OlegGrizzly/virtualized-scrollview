@@ -1,0 +1,5 @@
+{
+    "name": "VirtualizedScrollview.Runtime",
+    "rootNamespace": "OlegGrizzly.VirtualizedScrollview",
+    "references": []
+}
