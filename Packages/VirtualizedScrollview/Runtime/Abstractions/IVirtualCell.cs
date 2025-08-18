@@ -2,11 +2,11 @@ using UnityEngine;
 
 namespace OlegGrizzly.VirtualizedScrollview.Abstractions
 {
-    public interface IVirtualCell
+    public interface IVirtualCell<in T>
     {
         RectTransform Rect { get; }
         
-        void Bind(int dataIndex, object data);
+        void Bind(T item, int index);
         
         void Unbind();
     }
