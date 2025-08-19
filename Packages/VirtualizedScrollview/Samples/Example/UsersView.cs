@@ -29,6 +29,16 @@ namespace Samples.Example
         [SerializeField] private Button deleteButton;
         [SerializeField] private Button sortButton;
 
+        [Header("Layout Settings")]
+        [Min(0f)] [SerializeField] private float itemHeight = 150f;
+        [Min(0f)] [SerializeField] private float spacing = 20f;
+        [Min(0f)] [SerializeField] private float paddingTop = 0f;
+        [Min(0f)] [SerializeField] private float paddingBottom = 0f;
+
+        [Header("Overscan (items)")]
+        [Min(0)] [SerializeField] private int overscanBefore = 0;
+        [Min(0)] [SerializeField] private int overscanAfter  = 0;
+
         private ComponentPool<UserCell> _pool;
         private IVirtualDataSource<User> _dataSource;
         private IViewAdapter<User, UserCell> _adapter;
@@ -41,8 +51,9 @@ namespace Samples.Example
             _dataSource = new VirtualDataSource<User>(user => user.Id.ToString());
 
             _adapter = new VerticalViewAdapter<User, UserCell>();
-            _adapter.SetLayout(itemHeight: 150f, spacing: 20f, paddingTop: 0f, paddingBottom: 0f);
             _adapter.Initialize(scroll, content, _pool, _dataSource);
+            _adapter.SetLayout(itemHeight, spacing, paddingTop, paddingBottom);
+            _adapter.SetOverscanItems(overscanBefore, overscanAfter);
 
             var initial = new List<User>(100);
             for (var i = 0; i < 100; i++)
@@ -61,6 +72,15 @@ namespace Samples.Example
             deleteButton.onClick.AddListener(OnDeleteClicked);
             
             sortButton.onClick.AddListener(OnSortClicked);
+        }
+
+        private void OnValidate()
+        {
+            if (_adapter != null)
+            {
+                _adapter.SetLayout(itemHeight, spacing, paddingTop, paddingBottom);
+                _adapter.SetOverscanItems(overscanBefore, overscanAfter);
+            }
         }
 
         private void OnSortClicked()

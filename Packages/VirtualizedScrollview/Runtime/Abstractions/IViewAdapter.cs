@@ -10,9 +10,9 @@ namespace OlegGrizzly.VirtualizedScrollview.Abstractions
     {
         void Initialize(ScrollRect scroll, RectTransform content, ComponentPool<TCell> pool, IVirtualDataSource<T> dataSource);
         
-        void Destroy();
-        
         void SetLayout(float itemHeight, float spacing = 0f, float paddingTop = 0f, float paddingBottom = 0f);
+
+        void SetOverscanItems(int before, int after);
         
         void SetDynamicHeightProvider(Func<int, float> getHeight);
         
@@ -27,5 +27,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Abstractions
         (int start, int end) VisibleRange { get; }
         
         int TotalCount { get; }
+        
+        void Destroy();
     }
 }

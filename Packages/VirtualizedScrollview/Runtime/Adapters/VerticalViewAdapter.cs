@@ -24,11 +24,17 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
         private float _paddingBottom;
         
         private Func<int, float> _getDynamicHeight;
-        
+
         private readonly List<float> _heights = new();
         private readonly List<float> _prefix = new();
+        
+        private int _overscanBeforeItems; 
+        private int _overscanAfterItems;  
+        
+        private int _lastCount;
 
         public (int start, int end) VisibleRange { get; private set; } = (-1, -1);
+        
         public int TotalCount => _data?.Count ?? 0;
 
         public void Initialize(ScrollRect scroll, RectTransform content, ComponentPool<TCell> pool, IVirtualDataSource<T> dataSource)
@@ -47,36 +53,10 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             _scroll.onValueChanged.AddListener(OnScrollChanged);
             _data.Changed += OnDataChanged;
 
+            _lastCount = TotalCount;
+
             RebuildCaches();
             Refresh(keepScrollPosition: false);
-        }
-
-        public void Destroy()
-        {
-            if (_data != null) _data.Changed -= OnDataChanged;
-            if (_scroll != null) _scroll.onValueChanged.RemoveListener(OnScrollChanged);
-
-            // снять всё видимое
-            _toRemove.Clear();
-            foreach (var kv in _visible) _toRemove.Add(kv.Key);
-            for (int i = 0; i < _toRemove.Count; i++)
-            {
-                int idx = _toRemove[i];
-                var cell = _visible[idx];
-                SafeUnbind(cell);
-                _pool.Release(cell);
-                _visible.Remove(idx);
-            }
-            _toRemove.Clear();
-
-            _scroll = null;
-            _viewport = null;
-            _content = null;
-            _pool = null;
-            _data = null;
-            _heights.Clear();
-            _prefix.Clear();
-            VisibleRange = (-1, -1);
         }
 
         public void SetLayout(float itemHeight, float spacing = 0f, float paddingTop = 0f, float paddingBottom = 0f)
@@ -87,41 +67,52 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             _paddingBottom = Mathf.Max(0f, paddingBottom);
 
             RebuildCaches();
-            Refresh(true);
+            Refresh();
         }
 
         public void SetDynamicHeightProvider(Func<int, float> getHeight)
         {
             _getDynamicHeight = getHeight;
+            
             RebuildCaches();
-            Refresh(true);
+            Refresh();
+        }
+        
+        public void SetOverscanItems(int before, int after)
+        {
+            _overscanBeforeItems = Mathf.Max(0, before);
+            _overscanAfterItems  = Mathf.Max(0, after);
+            
+            UpdateVisible();
         }
 
         public void Refresh(bool keepScrollPosition = true)
         {
             if (_scroll == null) return;
-
-            // optionally сохранить позицию
-            Vector2 savedNormPos = _scroll.normalizedPosition;
-
-            // Обновить размер content
+            
+            var savedNormPos = _scroll.normalizedPosition;
+            
             UpdateContentSize();
-
-            // Снять все ячейки и заново рассчитать видимые — самый простой безопасный путь.
+            
             _toRemove.Clear();
-            foreach (var kv in _visible) _toRemove.Add(kv.Key);
-            for (int i = 0; i < _toRemove.Count; i++)
+            
+            foreach (var kv in _visible)
             {
-                int idx = _toRemove[i];
+                _toRemove.Add(kv.Key);
+            }
+            
+            foreach (var idx in _toRemove)
+            {
                 var cell = _visible[idx];
                 SafeUnbind(cell);
+                
                 _pool.Release(cell);
                 _visible.Remove(idx);
             }
+            
             _toRemove.Clear();
 
-            if (keepScrollPosition)
-                _scroll.normalizedPosition = savedNormPos;
+            _scroll.normalizedPosition = keepScrollPosition ? savedNormPos : new Vector2(0f, 1f);
 
             UpdateVisible();
         }
@@ -129,9 +120,10 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
         public void ScrollToIndex(int index, ScrollAlign align = ScrollAlign.Start)
         {
             if (_scroll == null || TotalCount == 0) return;
+            
             index = Mathf.Clamp(index, 0, TotalCount - 1);
 
-            float alignValue = align switch
+            var alignValue = align switch
             {
                 ScrollAlign.Start => 0f,
                 ScrollAlign.Center => 0.5f,
@@ -139,34 +131,34 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
                 _ => 0f
             };
 
-            float targetY = GetItemTopY(index);
-            float itemSize = GetItemFullHeight(index);
+            var targetY = GetItemTopY(index);
+            var itemSize = GetItemFullHeight(index);
 
-            float viewportHeight = _viewport.rect.height;
-            float contentHeight = _content.rect.height;
-
-            // сместить так, чтобы элемент оказался в позиции align (0 — верх вьюпорта, 1 — низ)
-            float viewportTopY = targetY - alignValue * Mathf.Max(0f, viewportHeight - itemSize);
-            float normalized = (contentHeight <= viewportHeight)
-                ? 1f
-                : 1f - Mathf.Clamp01(viewportTopY / (contentHeight - viewportHeight));
+            var viewportHeight = _viewport.rect.height;
+            var contentHeight = _content.rect.height;
+            
+            var viewportTopY = targetY - alignValue * Mathf.Max(0f, viewportHeight - itemSize);
+            var normalized = contentHeight <= viewportHeight ? 1f : 1f - Mathf.Clamp01(viewportTopY / (contentHeight - viewportHeight));
 
             _scroll.normalizedPosition = new Vector2(0f, normalized);
+            
             UpdateVisible();
         }
 
-        public void ScrollToStart() => ScrollToIndex(0, ScrollAlign.Start);
+        public void ScrollToStart() => ScrollToIndex(0);
+        
         public void ScrollToEnd() => ScrollToIndex(TotalCount - 1, ScrollAlign.End);
-
-        // ======== ВНУТРЕННЯЯ ЛОГИКА ========
 
         private void OnScrollChanged(Vector2 _) => UpdateVisible();
 
         private void OnDataChanged(IReadOnlyList<DataChange<T>> changes)
         {
-            // Простой путь: перестроить всё. Потом можно оптимизировать по типам изменений.
+            var hadItemsBefore = _lastCount > 0;
+            
             RebuildCaches();
-            Refresh(true);
+            Refresh(keepScrollPosition: hadItemsBefore);
+            
+            _lastCount = TotalCount;
         }
 
         private void RebuildCaches()
@@ -174,16 +166,17 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             _heights.Clear();
             _prefix.Clear();
 
-            int n = TotalCount;
+            var n = TotalCount;
             if (n <= 0) return;
 
             _heights.Capacity = Math.Max(_heights.Capacity, n);
             _prefix.Capacity = Math.Max(_prefix.Capacity, n + 1);
 
             _prefix.Add(0f);
-            for (int i = 0; i < n; i++)
+            
+            for (var i = 0; i < n; i++)
             {
-                float h = GetItemFullHeight(i);
+                var h = GetItemFullHeight(i);
                 _heights.Add(h);
                 _prefix.Add(_prefix[i] + h);
             }
@@ -191,82 +184,123 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
 
         private float GetItemFullHeight(int index)
         {
-            // высота ячейки + spacing (кроме последней) учитывается в кумулятивной сумме
-            float core = _getDynamicHeight != null ? Mathf.Max(0f, _getDynamicHeight(index)) : _itemHeight;
+            var core = _getDynamicHeight != null ? Mathf.Max(0f, _getDynamicHeight(index)) : _itemHeight;
+            
             return (index < TotalCount - 1) ? core + _spacing : core;
         }
 
         private float GetItemsRangeHeight(int start, int endInclusive)
         {
             if (TotalCount == 0 || start > endInclusive) return 0f;
-            float sum = _prefix[endInclusive + 1] - _prefix[start];
+            
+            var sum = _prefix[endInclusive + 1] - _prefix[start];
+            
             return sum;
         }
 
-        private float GetItemTopY(int index)
-        {
-            // координата от верхней кромки content вниз
-            return _paddingTop + _prefix[index];
-        }
+        private float GetItemTopY(int index) => _paddingTop + _prefix[index];
 
         private void UpdateContentSize()
         {
-            float items = (TotalCount > 0) ? _prefix[TotalCount] : 0f;
-            float height = _paddingTop + items + _paddingBottom;
+            var items = TotalCount > 0 ? _prefix[TotalCount] : 0f;
+            var height = _paddingTop + items + _paddingBottom;
 
             var size = _content.sizeDelta;
             size.y = height;
+            
             _content.sizeDelta = size;
         }
 
         private (int start, int end) ComputeVisibleIndices()
         {
             if (TotalCount <= 0) return (-1, -1);
+            
+            EnsureLayoutReady();
 
-            float viewportHeight = _viewport.rect.height;
+            var viewportHeight = _viewport.rect.height;
+            
+            var contentHeight = _content.rect.height;
+            var normalizedY = _scroll.normalizedPosition.y;
+            var maxOffset = Mathf.Max(0f, contentHeight - viewportHeight);
+            var viewportTop = (1f - normalizedY) * maxOffset;
+            
+            var top = viewportTop;
+            var bottom = viewportTop + viewportHeight;
+            
+            if (viewportHeight <= 1f)
+            {
+                var avgItem = (_heights.Count > 0) ? (_prefix[_heights.Count] / _heights.Count) : Mathf.Max(1f, _itemHeight);
+                var guessViewport = Mathf.Max(avgItem, avgItem * 8f);
 
-            // верх видимой области в системе координат content
-            float contentHeight = _content.rect.height;
-            float normalizedY = _scroll.normalizedPosition.y; // 1 = top
-            float maxOffset = Mathf.Max(0f, contentHeight - viewportHeight);
-            float viewportTop = (1f - normalizedY) * maxOffset;
+                var startGuess = 0;
+                var itemsToFill = Mathf.Clamp(Mathf.CeilToInt(guessViewport / Mathf.Max(1f, avgItem)), 1, TotalCount);
+                var endGuess = Mathf.Min(TotalCount - 1, itemsToFill - 1);
+                
+                startGuess = Mathf.Clamp(startGuess - _overscanBeforeItems, 0, Math.Max(0, TotalCount - 1));
+                endGuess = Mathf.Clamp(endGuess   + _overscanAfterItems,  startGuess, TotalCount - 1);
 
-            // ищем первый индекс, чья нижняя граница находится ниже top,
-            // и последний индекс, чья верхняя граница выше bottom
-            float top = viewportTop;
-            float bottom = viewportTop + viewportHeight;
+                return (startGuess, endGuess);
+            }
 
-            int start = LowerBoundPrefix(top - _paddingTop);
-            int end = UpperBoundPrefix(bottom - _paddingTop) - 1;
-
-            start = Mathf.Clamp(start, 0, TotalCount - 1);
-            end = Mathf.Clamp(end, start, TotalCount - 1);
+            var start = LowerBoundPrefix(top - _paddingTop);
+            var end = UpperBoundPrefix(bottom - _paddingTop) - 1;
+            
+            start = Mathf.Clamp(start - _overscanBeforeItems, 0, Math.Max(0, TotalCount - 1));
+            end = Mathf.Clamp(end + _overscanAfterItems, start, TotalCount - 1);
 
             return (start, end);
         }
 
-        // Бинарные поиски по префиксным суммам.
+        private void EnsureLayoutReady()
+        {
+            try
+            {
+                Canvas.ForceUpdateCanvases();
+                
+                if (_viewport) LayoutRebuilder.ForceRebuildLayoutImmediate(_viewport);
+                if (_content) LayoutRebuilder.ForceRebuildLayoutImmediate(_content);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException(ex);
+            }
+        }
+        
         private int LowerBoundPrefix(float value)
         {
-            // минимальный i: prefix[i] >= value
             int lo = 0, hi = TotalCount;
             while (lo < hi)
             {
-                int mid = (lo + hi) >> 1;
-                if (_prefix[mid] < value) lo = mid + 1; else hi = mid;
+                var mid = (lo + hi) >> 1;
+                if (_prefix[mid] < value)
+                {
+                    lo = mid + 1;
+                } 
+                else
+                {
+                    hi = mid;
+                }
             }
+            
             return lo;
         }
 
         private int UpperBoundPrefix(float value)
         {
-            // минимальный i: prefix[i] > value
             int lo = 0, hi = TotalCount;
             while (lo < hi)
             {
-                int mid = (lo + hi) >> 1;
-                if (_prefix[mid] <= value) lo = mid + 1; else hi = mid;
+                var mid = (lo + hi) >> 1;
+                if (_prefix[mid] <= value)
+                {
+                    lo = mid + 1;
+                } 
+                else
+                {
+                    hi = mid;
+                }
             }
+            
             return lo;
         }
 
@@ -280,34 +314,39 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             }
 
             var (needStart, needEnd) = ComputeVisibleIndices();
-
-            // убрать лишних
+            
             _toRemove.Clear();
+            
             foreach (var kv in _visible)
             {
-                int idx = kv.Key;
+                var idx = kv.Key;
                 if (idx < needStart || idx > needEnd)
+                {
                     _toRemove.Add(idx);
+                }
             }
-            for (int i = 0; i < _toRemove.Count; i++)
+            
+            foreach (var idx in _toRemove)
             {
-                int idx = _toRemove[i];
                 var cell = _visible[idx];
                 SafeUnbind(cell);
+                
                 _pool.Release(cell);
                 _visible.Remove(idx);
             }
+            
             _toRemove.Clear();
-
-            // добавить недостающих
-            for (int i = needStart; i <= needEnd; i++)
+            
+            for (var i = needStart; i <= needEnd; i++)
             {
                 if (_visible.ContainsKey(i)) continue;
 
                 var cell = _pool.Get();
                 PositionCell(cell.Rect, i);
+                
                 var item = _data[i];
                 cell.Bind(item, i);
+                
                 _visible.Add(i, cell);
             }
 
@@ -317,45 +356,81 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
         private void HideAll()
         {
             _toRemove.Clear();
-            foreach (var kv in _visible) _toRemove.Add(kv.Key);
-            for (int i = 0; i < _toRemove.Count; i++)
+            
+            foreach (var kv in _visible)
             {
-                int idx = _toRemove[i];
+                _toRemove.Add(kv.Key);
+            }
+            
+            foreach (var idx in _toRemove)
+            {
                 var cell = _visible[idx];
                 SafeUnbind(cell);
+                
                 _pool.Release(cell);
                 _visible.Remove(idx);
             }
+            
             _toRemove.Clear();
         }
 
         private void PositionCell(RectTransform rect, int index)
         {
-            // Анкеруем к верху (pivot.y = 1, anchorMin.y = anchorMax.y = 1) — стандарт для вертикального списка.
-            float topY = GetItemTopY(index);
-            float heightCore = (_getDynamicHeight != null) ? _getDynamicHeight(index) : _itemHeight;
+            var topY = GetItemTopY(index);
+            var heightCore = _getDynamicHeight?.Invoke(index) ?? _itemHeight;
 
             rect.anchorMin = new Vector2(0f, 1f);
-            rect.anchorMax = new Vector2(1f, 1f);   // горизонтальный stretch
-            rect.pivot    = new Vector2(0.5f, 1f);
-
-            // В режиме horizontal-stretch ширина задаётся left/right offsets, а не sizeDelta.x.
-            // Если префаб имел фиксированную ширину, в sizeDelta.x останется отрицательное значение
-            // (например -500), что даёт визуально left/right = -250. Обнуляем смещения по X.
-            rect.offsetMin = new Vector2(0f, rect.offsetMin.y);  // left = 0
-            rect.offsetMax = new Vector2(0f, rect.offsetMax.y);  // right = 0
-
-            // Высоту задаём через sizeDelta.y, а sizeDelta.x держим = 0 для корректного стретча по ширине.
+            rect.anchorMax = new Vector2(1f, 1f);  
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.offsetMin = new Vector2(0f, rect.offsetMin.y);
+            rect.offsetMax = new Vector2(0f, rect.offsetMax.y);
             rect.sizeDelta = new Vector2(0f, heightCore);
-
-            // y — отрицательный сдвиг вниз от верха content
             rect.anchoredPosition = new Vector2(0f, -topY);
         }
 
         private static void SafeUnbind(TCell cell)
         {
-            try { cell.Unbind(); }
-            catch (Exception ex) { Debug.LogException(ex); }
+            try
+            {
+                cell.Unbind();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException(ex);
+            }
+        }
+        
+        public void Destroy()
+        {
+            if (_data != null) _data.Changed -= OnDataChanged;
+            if (_scroll != null) _scroll.onValueChanged.RemoveListener(OnScrollChanged);
+            
+            _toRemove.Clear();
+            
+            foreach (var kv in _visible)
+            {
+                _toRemove.Add(kv.Key);
+            }
+            
+            foreach (var idx in _toRemove)
+            {
+                var cell = _visible[idx];
+                SafeUnbind(cell);
+                
+                _pool.Release(cell);
+                _visible.Remove(idx);
+            }
+            
+            _toRemove.Clear();
+
+            _scroll = null;
+            _viewport = null;
+            _content = null;
+            _pool = null;
+            _data = null;
+            _heights.Clear();
+            _prefix.Clear();
+            VisibleRange = (-1, -1);
         }
     }
 }
