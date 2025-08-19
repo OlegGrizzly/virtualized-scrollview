@@ -336,12 +336,17 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             float heightCore = (_getDynamicHeight != null) ? _getDynamicHeight(index) : _itemHeight;
 
             rect.anchorMin = new Vector2(0f, 1f);
-            rect.anchorMax = new Vector2(1f, 1f);
-            rect.pivot = new Vector2(0.5f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);   // горизонтальный stretch
+            rect.pivot    = new Vector2(0.5f, 1f);
 
-            var size = rect.sizeDelta;
-            size.y = heightCore;
-            rect.sizeDelta = size;
+            // В режиме horizontal-stretch ширина задаётся left/right offsets, а не sizeDelta.x.
+            // Если префаб имел фиксированную ширину, в sizeDelta.x останется отрицательное значение
+            // (например -500), что даёт визуально left/right = -250. Обнуляем смещения по X.
+            rect.offsetMin = new Vector2(0f, rect.offsetMin.y);  // left = 0
+            rect.offsetMax = new Vector2(0f, rect.offsetMax.y);  // right = 0
+
+            // Высоту задаём через sizeDelta.y, а sizeDelta.x держим = 0 для корректного стретча по ширине.
+            rect.sizeDelta = new Vector2(0f, heightCore);
 
             // y — отрицательный сдвиг вниз от верха content
             rect.anchoredPosition = new Vector2(0f, -topY);
