@@ -18,6 +18,12 @@ namespace OlegGrizzly.VirtualizedScrollview.Abstractions
         
         void SetItems(IEnumerable<T> items, bool detectMoves = true, bool detectUpdates = true);
         
+        void ApplySearch(string query, Func<T, string> stringify);
+        
+        void ApplyFilter(string value, Func<T, string> fieldSelector);
+        
+        void ResetSearchAndFilter();
+        
         void Add(T item);
         
         void Insert(int index, T item);

@@ -2,285 +2,295 @@ using System;
 using System.Collections.Generic;
 using OlegGrizzly.VirtualizedScrollview.Abstractions;
 using OlegGrizzly.VirtualizedScrollview.Adapters;
-using OlegGrizzly.VirtualizedScrollview.Core;
 using OlegGrizzly.VirtualizedScrollview.Core.Pooling;
 using OlegGrizzly.VirtualizedScrollview.Core.Sources;
 using UnityEngine;
 using UnityEngine.UI;
-using Random = UnityEngine.Random;
 
 namespace Samples.Example
 {
     public class UsersView : MonoBehaviour
     {
+        [Header("Scroll View")]
         [SerializeField] private ScrollRect scroll;
         [SerializeField] private RectTransform content;
         [SerializeField] private UserCell prefab;
         [SerializeField] private Transform parent;
         
-        [Header("SCROLL UI")]
-        [SerializeField] private Button scrollToTopButton;
-        [SerializeField] private Button scrollToBottomButton;
-        [SerializeField] private Button scrollToIndex30Button;
-
-        [Header("CRUD UI (index-based)")] 
-        [SerializeField] private InputField idInput;
-        [SerializeField] private InputField nameInput;
-        [SerializeField] private Button addButton;
+        [Header("Search")]
+        [SerializeField] private InputField searchInputField;
+        [SerializeField] private Button searchButton;
+        [SerializeField] private InputField filterInputField;
+        [SerializeField] private Button filterButton;
+        
+        [Header("Scroll")]
+        [SerializeField] private InputField scrollInputField;
+        [SerializeField] private Button scrollButton;
+        [SerializeField] private Button scrollStartButton;
+        [SerializeField] private Button scrollEndButton;
+        
+        [Header("CRUD")]
+        [SerializeField] private Button addFirstButton;
+        [SerializeField] private Button addLastButton;
+        [SerializeField] private InputField updateIndexInputField;
+        [SerializeField] private InputField updateNameInputField;
+        [SerializeField] private InputField updateAgeInputField;
         [SerializeField] private Button updateButton;
+        [SerializeField] private InputField deleteInputField;
         [SerializeField] private Button deleteButton;
-        [SerializeField] private Button sortButton;
-        [SerializeField] private Button clearButton;
-
-        [Header("INSERT UI")]
-        [SerializeField] private InputField insertIndexInput;
-        [SerializeField] private InputField insertNameInput;
+        
+        [Header("Insert")]
+        [SerializeField] private InputField insertIndexInputField;
+        [SerializeField] private InputField insertNameInputField;
+        [SerializeField] private InputField insertAgeInputField;
         [SerializeField] private Button insertButton;
-
-        [Header("MOVE UI")]
-        [SerializeField] private InputField moveFromInput;
-        [SerializeField] private InputField moveToInput;
-        [SerializeField] private InputField moveCountInput;
+        
+        [Header("Move")]
+        [SerializeField] private InputField moveFromInputField;
+        [SerializeField] private InputField moveToInputField;
+        [SerializeField] private InputField moveCountInputField;
         [SerializeField] private Button moveButton;
+        
+        [Header("Sort")]
+        [SerializeField] private Button sortIdButton;
+        [SerializeField] private Button sortNameButton;
+        [SerializeField] private Button sortAgeButton;
+        
+        [Header("Clear")]
+        [SerializeField] private Text countText;
+        [SerializeField] private Button clearAllButton;
 
-        [Header("SCROLL TO INDEX UI")]
-        [SerializeField] private InputField scrollIndexInput;
-        [SerializeField] private Button scrollToIndexButton;
-
-        [Header("Layout Settings")]
-        [Min(0f)] [SerializeField] private float itemHeight = 150f;
-        [Min(0f)] [SerializeField] private float spacing = 20f;
-        [Min(0f)] [SerializeField] private float paddingTop = 0f;
-        [Min(0f)] [SerializeField] private float paddingBottom = 0f;
-
-        [Header("Overscan (items)")]
-        [Min(0)] [SerializeField] private int overscanBefore = 0;
-        [Min(0)] [SerializeField] private int overscanAfter  = 0;
-
+        private IVirtualDataSource<User> _data;
+        private VerticalViewAdapter<User, UserCell> _adapter;
         private ComponentPool<UserCell> _pool;
-        private IVirtualDataSource<User> _dataSource;
-        private IViewAdapter<User, UserCell> _adapter;
-        private bool _sortAsc = true;
+        private readonly List<User> _initialUsers = new();
+        private int _nextId = 1;
+        
+        private bool _sortIdAsc = true;
+        private bool _sortNameAsc = true;
+        private bool _sortAgeAsc = true;
 
         private void Awake()
         {
-            _pool = new ComponentPool<UserCell>(prefab, parent, preWarm: 16, capacity: 32);
-            // Ключ не используется в CRUD-операциях (работаем по индексах). Если у VirtualDataSource есть конструктор без ключа — используйте его.
-            _dataSource = new VirtualDataSource<User>(user => user.Id.ToString());
-
-            _adapter = new VerticalViewAdapter<User, UserCell>();
-            _adapter.Initialize(scroll, content, _pool, _dataSource);
-            _adapter.SetLayout(itemHeight, spacing, paddingTop, paddingBottom);
-            _adapter.SetOverscanItems(overscanBefore, overscanAfter);
-
-            var initial = new List<User>(100);
-            for (var i = 0; i < 100; i++)
-            {
-                // Id используется только как поле модели; все операции делаем по index
-                initial.Add(new User(i, $"User {i}"));
-            }
-            _dataSource.SetItems(initial);
-
-            scrollToTopButton.onClick.AddListener(() => _adapter?.ScrollToStart());
-            scrollToBottomButton.onClick.AddListener(() => _adapter?.ScrollToEnd());
-            scrollToIndex30Button.onClick.AddListener(() => _adapter?.ScrollToIndex(30, ScrollAlign.Start));
-
-            addButton.onClick.AddListener(OnAddClicked);
-            updateButton.onClick.AddListener(OnUpdateClicked);
-            deleteButton.onClick.AddListener(OnDeleteClicked);
+            _data = new VirtualDataSource<User>(u => u.Id.ToString());
             
-            sortButton.onClick.AddListener(OnSortClicked);
-            clearButton.onClick.AddListener(OnClearClicked);
+            _pool = new ComponentPool<UserCell>(prefab, parent, preWarm: 8);
+            _adapter = new VerticalViewAdapter<User, UserCell>();
+            _adapter.Initialize(scroll, content, _pool, _data);
+            
+            var itemHeight = prefab.Rect ? prefab.Rect.rect.height : 100f;
+            _adapter.SetLayout(itemHeight, spacing: 4f, paddingTop: 8f, paddingBottom: 8f);
+            _adapter.SetOverscanItems(before: 2, after: 2);
 
-            insertButton.onClick.AddListener(OnInsertClicked);
-            moveButton.onClick.AddListener(OnMoveClicked);
-            scrollToIndexButton.onClick.AddListener(OnScrollToIndexClicked);
+            HookupUI();
+            
+            Seed(1000);
+            UpdateCountText();
         }
 
-        private void OnValidate()
+        #region UI wiring
+        private void HookupUI()
         {
-            if (_adapter != null)
+            if (searchButton) searchButton.onClick.AddListener(OnSearchClicked);
+            
+            if (filterButton) filterButton.onClick.AddListener(OnFilterClicked);
+
+            if (scrollButton) scrollButton.onClick.AddListener(OnScrollToIndexClicked);
+            if (scrollStartButton) scrollStartButton.onClick.AddListener(() => _adapter.ScrollToStart());
+            if (scrollEndButton) scrollEndButton.onClick.AddListener(() => _adapter.ScrollToEnd());
+
+            if (addFirstButton) addFirstButton.onClick.AddListener(AddFirst);
+            if (addLastButton) addLastButton.onClick.AddListener(AddLast);
+            if (updateButton) updateButton.onClick.AddListener(UpdateAtIndex);
+            if (deleteButton) deleteButton.onClick.AddListener(DeleteAtIndex);
+
+            if (insertButton) insertButton.onClick.AddListener(InsertAtIndex);
+
+            if (moveButton) moveButton.onClick.AddListener(MoveRange);
+            
+            if (sortIdButton) sortIdButton.onClick.AddListener(SortById);
+            if (sortNameButton) sortNameButton.onClick.AddListener(SortByName);
+            if (sortAgeButton) sortAgeButton.onClick.AddListener(SortByAge);
+
+            if (clearAllButton) clearAllButton.onClick.AddListener(() => { _data.Clear(); UpdateCountText(); });
+        }
+        #endregion
+
+        #region Seed & helpers
+        private void Seed(int count)
+        {
+            _initialUsers.Clear();
+            for (var i = 0; i < count; i++)
             {
-                _adapter.SetLayout(itemHeight, spacing, paddingTop, paddingBottom);
-                _adapter.SetOverscanItems(overscanBefore, overscanAfter);
+                _initialUsers.Add(MakeUser());
             }
+            
+            (_data as VirtualDataSource<User>)?.SetItems(_initialUsers);
         }
 
-        private void OnSortClicked()
+        private User MakeUser(string userName = null, int? age = null)
         {
-            _sortAsc = !_sortAsc;
-            SortByName(_sortAsc);
-
-            var label = sortButton?.GetComponentInChildren<Text>();
-            if (label != null)
-                label.text = _sortAsc ? "Sort Name ASC" : "Sort Name DESC";
+            var id = _nextId++;
+            var n = string.IsNullOrEmpty(userName) ? $"User {id:000}" : userName;
+            var a = age ?? UnityEngine.Random.Range(18, 65);
+            return new User(id, n, a);
         }
-        
-        private static readonly IComparer<User> NameAscComparer = Comparer<User>.Create(
-            (a, b) => string.Compare(a?.Name, b?.Name, StringComparison.Ordinal));
 
-        private static readonly IComparer<User> NameDescComparer = Comparer<User>.Create(
-            (a, b) => string.Compare(b?.Name, a?.Name, StringComparison.Ordinal));
-        private void SortByName(bool asc)
+        private static int ClampIndex(int index, int count)
         {
-            var comparer = asc ? NameAscComparer : NameDescComparer;
-            _dataSource.Sort(comparer);
+            if (count <= 0) return -1;
+            return Mathf.Clamp(index, 0, count - 1);
         }
 
-        private bool TryParseIndex(out int index)
-        {
-            index = 0;
-            return idInput && int.TryParse(idInput.text, out index);
-        }
-
-        private static bool TryParse(InputField input, out int value)
+        private static bool TryParseInt(InputField field, out int value)
         {
             value = 0;
-            return input && int.TryParse(input.text, out value);
+            return field && int.TryParse(field.text, out value);
+        }
+        #endregion
+
+        #region Search / Scroll
+        private void OnSearchClicked()
+        {
+            if (!searchInputField) return;
+            
+            var query = searchInputField.text;
+            (_data as VirtualDataSource<User>)?.ApplySearch(query, u => $"{u.Id} {u.Name} {u.Age}");
+            _adapter.ScrollToStart();
+            
+            UpdateCountText();
         }
 
-        private int ClampIndex(int index, bool allowEnd = false)
+        private void OnFilterClicked()
         {
-            return Mathf.Clamp(index, 0, allowEnd ? _dataSource.Count : Mathf.Max(0, _dataSource.Count - 1));
-        }
-
-        private void OnAddClicked()
-        {
-            if (!TryParseIndex(out var index)) return;
-            var name = nameInput ? nameInput.text : $"User {index}";
-
-            // Сформируем новый список, вставляя по индексу (или добавим в конец, если индекс больше Count)
-            var newList = new List<User>(_dataSource.Count + 1);
-            for (int i = 0; i < _dataSource.Count; i++)
-                newList.Add(_dataSource[i]);
-
-            index = Mathf.Clamp(index, 0, newList.Count);
-            newList.Insert(index, new User(index, name));
-
-            // Перенумерация Id поля модели необязательна, но для наглядности можно синхронизировать с индексом
-            for (int i = 0; i < newList.Count; i++)
-                newList[i] = new User(i, newList[i].Name);
-
-            _dataSource.SetItems(newList);
-
-            Debug.LogWarning(_dataSource.Count);
-        }
-
-        private void OnUpdateClicked()
-        {
-            if (!TryParseIndex(out var index)) return;
-            if (index < 0 || index >= _dataSource.Count) return;
-
-            var name = nameInput ? nameInput.text : $"User {index}";
-            var updated = new User(index, name);
-            _dataSource.UpdateAt(index, updated);
-
-            Debug.LogWarning(_dataSource.Count);
-        }
-
-        private void OnDeleteClicked()
-        {
-            if (!TryParseIndex(out var index)) return;
-            if (index < 0 || index >= _dataSource.Count) return;
-
-            _dataSource.RemoveAt(index);
-
-            // (опционально) Перенумеруем Id для наглядности соответствию индексу
-            var list = new List<User>(_dataSource.Count);
-            for (int i = 0; i < _dataSource.Count; i++)
-            {
-                var u = _dataSource[i];
-                list.Add(new User(i, u.Name));
-            }
-            _dataSource.SetItems(list);
-
-            Debug.LogWarning(_dataSource.Count);
-        }
-
-        private void OnInsertClicked()
-        {
-            if (!TryParse(insertIndexInput, out var index)) return;
-            var name = insertNameInput && !string.IsNullOrEmpty(insertNameInput.text)
-                ? insertNameInput.text
-                : $"User {index}";
-
-            // Собираем новый список и вставляем по индексу (с допуском вставки в конец)
-            var list = new List<User>(_dataSource.Count + 1);
-            for (int i = 0; i < _dataSource.Count; i++)
-                list.Add(_dataSource[i]);
-
-            index = Mathf.Clamp(index, 0, list.Count);
-            list.Insert(index, new User(index, name));
-
-            // Опционально: синхронизируем Id с индексом для наглядности
-            for (int i = 0; i < list.Count; i++)
-                list[i] = new User(i, list[i].Name);
-
-            _dataSource.SetItems(list);
-            Debug.LogWarning($"Inserted at {index}. Count={_dataSource.Count}");
-        }
-
-        private void OnMoveClicked()
-        {
-            if (!TryParse(moveFromInput, out var from)) return;
-            if (!TryParse(moveToInput, out var to)) return;
-            if (!TryParse(moveCountInput, out var count)) count = 1;
-            count = Mathf.Max(1, count);
-
-            if (_dataSource.Count == 0) return;
-            from = ClampIndex(from);
-            to = ClampIndex(to);
-
-            // Кламп по count, чтобы не выходить за границы
-            count = Mathf.Min(count, _dataSource.Count - from);
-            if (count <= 0) return;
-
-            _dataSource.Move(from, to, count);
-
-            // Опционально: синхронизируем Id с индексом
-            var list = new List<User>(_dataSource.Count);
-            for (int i = 0; i < _dataSource.Count; i++)
-            {
-                var u = _dataSource[i];
-                list.Add(new User(i, u.Name));
-            }
-            _dataSource.SetItems(list);
-
-            Debug.LogWarning($"Moved {count} item(s) from {from} to {to}. Count={_dataSource.Count}");
+            var value = filterInputField ? filterInputField.text : null;
+            (_data as VirtualDataSource<User>)?.ApplyFilter(value, u => u.Name);
+            _adapter.ScrollToStart();
+            
+            UpdateCountText();
         }
 
         private void OnScrollToIndexClicked()
         {
-            if (!TryParse(scrollIndexInput, out var index)) return;
-            if (_adapter == null) return;
-
-            index = ClampIndex(index);
-            _adapter.ScrollToIndex(index, ScrollAlign.Start);
+            if (!TryParseInt(scrollInputField, out var idx)) return;
+            idx = ClampIndex(idx, _data.Count);
+            if (idx >= 0) _adapter.ScrollToIndex(idx);
         }
+        #endregion
 
-        private void OnClearClicked()
+        #region CRUD
+        private void AddFirst()
         {
-            _dataSource.Clear();
-            Debug.LogWarning("Data source cleared");
+            _data.Insert(0, MakeUser());
+            UpdateCountText();
         }
 
+        private void AddLast()
+        {
+            _data.Add(MakeUser());
+            UpdateCountText();
+        }
+
+        private void UpdateAtIndex()
+        {
+            if (!TryParseInt(updateIndexInputField, out var idx)) return;
+            if (idx < 0 || idx >= _data.Count) return;
+
+            var cur = _data[idx];
+            var newName = string.IsNullOrEmpty(updateNameInputField?.text) ? cur.Name : updateNameInputField.text;
+            var newAge = cur.Age;
+            if (int.TryParse(updateAgeInputField?.text, out var a)) newAge = a;
+
+            var updated = new User(cur.Id, newName, newAge);
+            _data.UpdateAt(idx, updated);
+            UpdateCountText();
+        }
+
+        private void DeleteAtIndex()
+        {
+            if (!TryParseInt(deleteInputField, out var idx)) return;
+            if (idx < 0 || idx >= _data.Count) return;
+            _data.RemoveAt(idx);
+            UpdateCountText();
+        }
+        #endregion
+
+        #region Insert / Move
+        private void InsertAtIndex()
+        {
+            if (!TryParseInt(insertIndexInputField, out var idx)) return;
+            idx = Mathf.Clamp(idx, 0, _data.Count);
+            var userName = string.IsNullOrEmpty(insertNameInputField?.text) ? null : insertNameInputField.text;
+            int? userAge = null;
+            if (int.TryParse(insertAgeInputField?.text, out var parsedAge))
+            {
+                userAge = parsedAge;
+            }
+            _data.Insert(idx, MakeUser(userName, userAge));
+            UpdateCountText();
+        }
+
+        private void MoveRange()
+        {
+            if (!TryParseInt(moveFromInputField, out var from)) return;
+            if (!TryParseInt(moveToInputField, out var to)) return;
+
+            var count = 1;
+            if (TryParseInt(moveCountInputField, out var parsed))
+            {
+                count = Mathf.Max(1, parsed);
+            }
+
+            _data.Move(from, to, count);
+            UpdateCountText();
+        }
+        #endregion
+
+        #region Sort
+        private void SortById()
+        {
+            var asc = _sortIdAsc;
+            _data.Sort(Comparer<User>.Create((a, b) => asc ? a.Id.CompareTo(b.Id) : b.Id.CompareTo(a.Id)));
+            _sortIdAsc = !asc;
+            UpdateCountText();
+        }
+
+        private void SortByName()
+        {
+            var asc = _sortNameAsc;
+            _data.Sort(Comparer<User>.Create((a, b) => asc ? string.Compare(a.Name, b.Name, StringComparison.Ordinal) : string.Compare(b.Name, a.Name, StringComparison.Ordinal)));
+            _sortNameAsc = !asc;
+            UpdateCountText();
+        }
+
+        private void SortByAge()
+        {
+            var asc = _sortAgeAsc;
+            _data.Sort(Comparer<User>.Create((a, b) => asc ? a.Age.CompareTo(b.Age) : b.Age.CompareTo(a.Age)));
+            _sortAgeAsc = !asc;
+            UpdateCountText();
+        }
+        #endregion
+        
+        private void UpdateCountText()
+        {
+            if (countText)
+            {
+                countText.text = $"Total: {_data.Count}";
+            }
+        }
+        
         private void OnDestroy()
         {
-            scrollToTopButton?.onClick.RemoveAllListeners();
-            scrollToBottomButton?.onClick.RemoveAllListeners();
-            scrollToIndex30Button?.onClick.RemoveAllListeners();
-
-            addButton?.onClick.RemoveAllListeners();
-            updateButton?.onClick.RemoveAllListeners();
-            deleteButton?.onClick.RemoveAllListeners();
-            clearButton?.onClick.RemoveAllListeners();
-
-            insertButton?.onClick.RemoveAllListeners();
-            moveButton?.onClick.RemoveAllListeners();
-            scrollToIndexButton?.onClick.RemoveAllListeners();
-
             _adapter?.Destroy();
             _pool?.Dispose();
+        }
+
+        public void ResetSearchAndFilter()
+        {
+            (_data as VirtualDataSource<User>)?.ResetSearchAndFilter();
+            _adapter.ScrollToStart();
+            UpdateCountText();
         }
     }
 }

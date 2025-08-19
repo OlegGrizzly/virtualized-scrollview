@@ -12,6 +12,12 @@ namespace OlegGrizzly.VirtualizedScrollview.Core.Sources
         private readonly Func<T, string> _keySelector;
         private readonly IEqualityComparer<T> _itemComparer;
         private readonly List<DataChange<T>> _cachePool = new(1);
+        
+        private List<Entry> _backup;
+        private string _activeSearchQuery;
+        private Func<T, string> _searchStringify;
+        private string _activeFilterValue;
+        private Func<T, string> _filterFieldSelector;
 
         public event Action<IReadOnlyList<DataChange<T>>> Changed;
 
@@ -132,7 +138,9 @@ namespace OlegGrizzly.VirtualizedScrollview.Core.Sources
            
             var target = new List<Entry>(_list);
             target.Sort((a, b) => comparer.Compare(a.Item, b.Item));
-            
+
+            _backup?.Sort((a, b) => comparer.Compare(a.Item, b.Item));
+
             ApplyOrder(target);
         }
         
@@ -146,6 +154,60 @@ namespace OlegGrizzly.VirtualizedScrollview.Core.Sources
             _indexById.Clear();
             
             Emit(new DataChange<T>(ChangeKind.Remove, 0, removedCount));
+        }
+
+        public void ApplySearch(string query, Func<T, string> stringify)
+        {
+            _searchStringify = stringify ?? _searchStringify;
+            _activeSearchQuery = string.IsNullOrWhiteSpace(query) ? null : query;
+
+            if (string.IsNullOrWhiteSpace(_activeSearchQuery) && _activeFilterValue == null)
+            {
+                if (_backup != null)
+                {
+                    ApplyOrder(new List<Entry>(_backup));
+                    _backup = null;
+                }
+                
+                return;
+            }
+
+            EnsureBackup();
+            ApplyCurrentNarrowing();
+        }
+
+        public void ApplyFilter(string value, Func<T, string> fieldSelector)
+        {
+            _filterFieldSelector = fieldSelector ?? _filterFieldSelector;
+            _activeFilterValue = string.IsNullOrWhiteSpace(value) ? null : value;
+
+            if (_activeSearchQuery == null && _activeFilterValue == null)
+            {
+                if (_backup != null)
+                {
+                    ApplyOrder(new List<Entry>(_backup));
+                    _backup = null;
+                }
+                
+                return;
+            }
+
+            EnsureBackup();
+            ApplyCurrentNarrowing();
+        }
+        
+        public void ResetSearchAndFilter()
+        {
+            _activeSearchQuery = null;
+            _activeFilterValue = null;
+            _searchStringify = null;
+            _filterFieldSelector = null;
+
+            if (_backup != null)
+            {
+                ApplyOrder(new List<Entry>(_backup));
+                _backup = null;
+            }
         }
         
         public void SetItems(IEnumerable<T> items, bool detectMoves = true, bool detectUpdates = true)
@@ -347,6 +409,59 @@ namespace OlegGrizzly.VirtualizedScrollview.Core.Sources
             _cachePool.Add(c);
             
             return _cachePool;
+        }
+
+        private void EnsureBackup()
+        {
+            _backup ??= new List<Entry>(_list);
+        }
+
+        private void ApplyCurrentNarrowing()
+        {
+            if (_backup == null)
+            {
+                return;
+            }
+
+            var source = _backup;
+            var target = new List<Entry>();
+
+            var hasSearch = !string.IsNullOrWhiteSpace(_activeSearchQuery) && _searchStringify != null;
+            var hasFilter = !string.IsNullOrWhiteSpace(_activeFilterValue) && _filterFieldSelector != null;
+
+            var q = _activeSearchQuery?.Trim();
+            var f = _activeFilterValue?.Trim();
+
+            foreach (var e in source)
+            {
+                var ok = true;
+
+                if (hasSearch)
+                {
+                    var text = _searchStringify(e.Item) ?? string.Empty;
+                    ok = ContainsOrdinalIgnoreCase(text, q);
+                }
+
+                if (ok && hasFilter)
+                {
+                    var field = _filterFieldSelector(e.Item) ?? string.Empty;
+                    ok = ContainsOrdinalIgnoreCase(field, f);
+                }
+
+                if (ok)
+                {
+                    target.Add(e);
+                }
+            }
+
+            ApplyOrder(target);
+        }
+
+        private static bool ContainsOrdinalIgnoreCase(string text, string pattern)
+        {
+            if (string.IsNullOrEmpty(pattern)) return true;
+            if (string.IsNullOrEmpty(text)) return false;
+            return text.IndexOf(pattern, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private void ApplyOrder(List<Entry> target)
