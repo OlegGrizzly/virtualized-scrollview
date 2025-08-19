@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.Pool;
 using Object = UnityEngine.Object;
 
-namespace OlegGrizzly.VirtualizedScrollview.Core
+namespace OlegGrizzly.VirtualizedScrollview.Core.Pooling
 {
     public sealed class ComponentPool<T> : IDisposable where T : Component
     {

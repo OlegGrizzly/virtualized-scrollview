@@ -1,4 +1,5 @@
 using OlegGrizzly.VirtualizedScrollview.Core;
+using OlegGrizzly.VirtualizedScrollview.Core.View;
 using UnityEngine;
 using UnityEngine.UI;
 

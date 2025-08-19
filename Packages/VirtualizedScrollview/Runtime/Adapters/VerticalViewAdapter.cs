@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using OlegGrizzly.VirtualizedScrollview.Abstractions;
-using OlegGrizzly.VirtualizedScrollview.Core;
+using OlegGrizzly.VirtualizedScrollview.Core.Data;
+using OlegGrizzly.VirtualizedScrollview.Core.Pooling;
+using OlegGrizzly.VirtualizedScrollview.Core.View;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -31,10 +33,8 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
         private int _overscanBeforeItems; 
         private int _overscanAfterItems;  
         
-        private int _lastCount;
         private bool _layoutDirty;
-
-        // === Helpers (refactoring) ===
+        
         private void SnapshotVisibleKeys()
         {
             _toRemove.Clear();
@@ -69,8 +69,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             
             _scroll.onValueChanged.AddListener(OnScrollChanged);
             _data.Changed += OnDataChanged;
-
-            _lastCount = TotalCount;
+            
             _layoutDirty = true;
 
             RebuildCaches();
@@ -127,8 +126,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
                 ReleaseAndRemoveVisibleIndex(idx);
             }
             _toRemove.Clear();
-
-            // We've just cleared all realized cells; force recompute on next UpdateVisible
+            
             VisibleRange = (-1, -1);
 
             _scroll.normalizedPosition = keepScrollPosition ? savedNormPos : new Vector2(0f, 1f);
@@ -183,12 +181,10 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
 
         private void OnDataChanged(IReadOnlyList<DataChange<T>> changes)
         {
-            // 1) Snapshot current visual anchor: first visible index and its intra-item offset
             var hadItemsBefore = _heights.Count > 0;
 
             int anchorIndex = Mathf.Max(0, VisibleRange.start);
-
-            // Compute current viewportTop in content coordinates
+            
             var viewportHeight = _viewport.rect.height;
             var contentHeight = _content.rect.height;
             var normalizedY = _scroll.normalizedPosition.y;
@@ -196,7 +192,6 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             var maxOffset = Mathf.Max(0f, contentHeight - viewportHeight);
             var viewportTop = (1f - normalizedY) * maxOffset;
 
-            // Intra-item offset from the top of the first visible item
             float anchorOffset = 0f;
             if (hadItemsBefore && anchorIndex >= 0 && anchorIndex < _prefix.Count)
             {
@@ -204,12 +199,10 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
                 anchorOffset = Mathf.Max(0f, viewportTop - itemTop);
             }
 
-            // 2) Rebuild caches/content size
             _layoutDirty = true;
             RebuildCaches();
             UpdateContentSize();
 
-            // 3) Restore the same visual anchor (best effort)
             var n = _heights.Count;
             if (n > 0)
             {
@@ -224,14 +217,11 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
 
                 _scroll.normalizedPosition = new Vector2(0f, newNormalized);
             }
-
-            // 3.5) Rebind currently visible cells to reflect potential reordering (sorting)
-            // Ensure layout first so positions are valid for PositionCell
+            
             EnsureLayoutReady();
             var needed = ComputeVisibleIndices();
             if (needed.start >= 0)
             {
-                // Rebind and reposition cells that remain visible at the same indexes
                 foreach (var kv in _visible)
                 {
                     int idx = kv.Key;
@@ -242,12 +232,9 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
                     cell.Bind(itemNow, idx);
                 }
             }
-
-            // 4) Ensure layout once and update visible
+            
             EnsureLayoutReady();
             UpdateVisible();
-
-            _lastCount = TotalCount;
         }
 
         private void RebuildCaches()
@@ -306,8 +293,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
         {
             var n = _heights.Count;
             if (n <= 0) return (-1, -1);
-
-            // Do not force layout rebuilds here; they are done only when explicitly marked dirty
+            
             var viewportHeight = _viewport.rect.height;
             var contentHeight = _content.rect.height;
             var normalizedY = _scroll.normalizedPosition.y;

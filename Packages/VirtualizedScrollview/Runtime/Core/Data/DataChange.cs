@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace OlegGrizzly.VirtualizedScrollview.Core
+namespace OlegGrizzly.VirtualizedScrollview.Core.Data
 {
     public readonly struct DataChange<T>
     {
@@ -35,13 +35,5 @@ namespace OlegGrizzly.VirtualizedScrollview.Core
         {
             return new DataChange<T>(ChangeKind.Move, fromIndex, toIndex, count);
         }
-    }
-
-    public enum ChangeKind
-    {
-        Insert,
-        Remove,
-        Move,
-        Update
     }
 }

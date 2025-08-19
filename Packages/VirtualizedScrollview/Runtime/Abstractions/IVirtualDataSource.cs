@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using OlegGrizzly.VirtualizedScrollview.Core;
+using OlegGrizzly.VirtualizedScrollview.Core.Data;
 
 namespace OlegGrizzly.VirtualizedScrollview.Abstractions
 {

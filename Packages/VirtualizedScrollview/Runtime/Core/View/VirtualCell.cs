@@ -1,7 +1,7 @@
 using OlegGrizzly.VirtualizedScrollview.Abstractions;
 using UnityEngine;
 
-namespace OlegGrizzly.VirtualizedScrollview.Core
+namespace OlegGrizzly.VirtualizedScrollview.Core.View
 {
     public abstract class VirtualCell<T> : MonoBehaviour, IVirtualCell<T>, IPoolable
     {
@@ -13,7 +13,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Core
         
         protected T Data { get; private set; }
 
-        public virtual void Bind(T item, int index)
+        public void Bind(T item, int index)
         {
             Data = item;
             Index = index;
@@ -21,7 +21,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Core
             OnBound(item, index);
         }
 
-        public virtual void Unbind()
+        public void Unbind()
         {
             OnUnbound();
             

@@ -1,6 +1,7 @@
 using System;
 using OlegGrizzly.VirtualizedScrollview.Adapters;
-using OlegGrizzly.VirtualizedScrollview.Core;
+using OlegGrizzly.VirtualizedScrollview.Core.Pooling;
+using OlegGrizzly.VirtualizedScrollview.Core.View;
 using UnityEngine;
 using UnityEngine.UI;
 

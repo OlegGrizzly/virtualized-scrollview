@@ -3,9 +3,10 @@ using System.Collections.Generic;
 using OlegGrizzly.VirtualizedScrollview.Abstractions;
 using OlegGrizzly.VirtualizedScrollview.Adapters;
 using OlegGrizzly.VirtualizedScrollview.Core;
+using OlegGrizzly.VirtualizedScrollview.Core.Pooling;
+using OlegGrizzly.VirtualizedScrollview.Core.Sources;
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.EventSystems;
 using Random = UnityEngine.Random;
 
 namespace Samples.Example
@@ -56,10 +57,6 @@ namespace Samples.Example
         [Min(0)] [SerializeField] private int overscanBefore = 0;
         [Min(0)] [SerializeField] private int overscanAfter  = 0;
 
-        // Drag & Drop state
-        private bool _isDragging;
-        private int _dragFromIndex = -1;
-
         private ComponentPool<UserCell> _pool;
         private IVirtualDataSource<User> _dataSource;
         private IViewAdapter<User, UserCell> _adapter;
@@ -98,9 +95,6 @@ namespace Samples.Example
             insertButton.onClick.AddListener(OnInsertClicked);
             moveButton.onClick.AddListener(OnMoveClicked);
             scrollToIndexButton.onClick.AddListener(OnScrollToIndexClicked);
-
-            UserCell.OnBeginDragEvent += OnCellBeginDrag;
-            UserCell.OnDropEvent += OnCellDrop;
         }
 
         private void OnValidate()
@@ -270,56 +264,6 @@ namespace Samples.Example
             Debug.LogWarning("Data source cleared");
         }
 
-        private int ScreenPointToIndex(Vector2 screenPoint)
-        {
-            if (_dataSource == null || _dataSource.Count == 0) return 0;
-
-            // Convert to local point in content space
-            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(content, screenPoint, null, out var local))
-                return 0;
-
-            // In our layout, content pivot Y = 1 (top). Local Y is negative when going down.
-            var topToPoint = -local.y; // distance from content top in px
-            var y = Mathf.Max(0f, topToPoint - paddingTop);
-            var step = Mathf.Max(1f, itemHeight + spacing);
-            var index = Mathf.FloorToInt(y / step);
-            return Mathf.Clamp(index, 0, Mathf.Max(0, _dataSource.Count - 1));
-        }
-
-        private void OnCellBeginDrag(UserCell cell, int index)
-        {
-            _isDragging = true;
-            _dragFromIndex = index;
-        }
-
-        private void OnCellDrop(UserCell cell, int fromIndex, int _)
-        {
-            if (!_isDragging) return;
-            _isDragging = false;
-
-            // Determine target index from current mouse position
-            var target = ScreenPointToIndex(Input.mousePosition);
-
-            // Single-item move for now; adjust insert index when moving down
-            if (target > _dragFromIndex) target -= 1;
-            target = ClampIndex(target);
-
-            if (target == _dragFromIndex) return;
-
-            _dataSource.Move(_dragFromIndex, target, 1);
-
-            // Optional: renumber Id for clarity to match indices
-            var list = new List<User>(_dataSource.Count);
-            for (int i = 0; i < _dataSource.Count; i++)
-            {
-                var u = _dataSource[i];
-                list.Add(new User(i, u.Name));
-            }
-            _dataSource.SetItems(list);
-
-            _dragFromIndex = -1;
-        }
-
         private void OnDestroy()
         {
             scrollToTopButton?.onClick.RemoveAllListeners();
@@ -334,9 +278,6 @@ namespace Samples.Example
             insertButton?.onClick.RemoveAllListeners();
             moveButton?.onClick.RemoveAllListeners();
             scrollToIndexButton?.onClick.RemoveAllListeners();
-
-            UserCell.OnBeginDragEvent -= OnCellBeginDrag;
-            UserCell.OnDropEvent -= OnCellDrop;
 
             _adapter?.Destroy();
             _pool?.Dispose();

@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using OlegGrizzly.VirtualizedScrollview.Abstractions;
+using OlegGrizzly.VirtualizedScrollview.Core.Data;
 
-namespace OlegGrizzly.VirtualizedScrollview.Core
+namespace OlegGrizzly.VirtualizedScrollview.Core.Sources
 {
     public class VirtualDataSource<T> : IVirtualDataSource<T>
     {
