@@ -22,6 +22,7 @@ namespace Samples.Example
         [SerializeField] private Button searchButton;
         [SerializeField] private InputField filterInputField;
         [SerializeField] private Button filterButton;
+        [SerializeField] private Button resetButton;
         
         [Header("Scroll")]
         [SerializeField] private InputField scrollInputField;
@@ -94,6 +95,8 @@ namespace Samples.Example
             if (searchButton) searchButton.onClick.AddListener(OnSearchClicked);
             
             if (filterButton) filterButton.onClick.AddListener(OnFilterClicked);
+            
+            if (resetButton) resetButton.onClick.AddListener(ResetSearchAndFilter);
 
             if (scrollButton) scrollButton.onClick.AddListener(OnScrollToIndexClicked);
             if (scrollStartButton) scrollStartButton.onClick.AddListener(() => _adapter.ScrollToStart());
@@ -125,7 +128,7 @@ namespace Samples.Example
                 _initialUsers.Add(MakeUser());
             }
             
-            (_data as VirtualDataSource<User>)?.SetItems(_initialUsers);
+            _data.SetItems(_initialUsers);
         }
 
         private User MakeUser(string userName = null, int? age = null)
@@ -155,7 +158,7 @@ namespace Samples.Example
             if (!searchInputField) return;
             
             var query = searchInputField.text;
-            (_data as VirtualDataSource<User>)?.ApplySearch(query, u => $"{u.Id} {u.Name} {u.Age}");
+            _data.ApplySearch(query, u => $"{u.Id} {u.Name} {u.Age}");
             _adapter.ScrollToStart();
             
             UpdateCountText();
@@ -164,8 +167,19 @@ namespace Samples.Example
         private void OnFilterClicked()
         {
             var value = filterInputField ? filterInputField.text : null;
-            (_data as VirtualDataSource<User>)?.ApplyFilter(value, u => u.Name);
+            _data.ApplyFilter(value, u => u.Name);
             _adapter.ScrollToStart();
+            
+            UpdateCountText();
+        }
+        
+        private void ResetSearchAndFilter()
+        {
+            _data.ResetSearchAndFilter();
+            _adapter.ScrollToStart();
+
+            searchInputField.text = "";
+            filterInputField.text = "";
             
             UpdateCountText();
         }
@@ -284,13 +298,6 @@ namespace Samples.Example
         {
             _adapter?.Destroy();
             _pool?.Dispose();
-        }
-
-        public void ResetSearchAndFilter()
-        {
-            (_data as VirtualDataSource<User>)?.ResetSearchAndFilter();
-            _adapter.ScrollToStart();
-            UpdateCountText();
         }
     }
 }
