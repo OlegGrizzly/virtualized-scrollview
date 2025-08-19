@@ -5,6 +5,7 @@ using OlegGrizzly.VirtualizedScrollview.Adapters;
 using OlegGrizzly.VirtualizedScrollview.Core;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 using Random = UnityEngine.Random;
 
 namespace Samples.Example
@@ -21,13 +22,29 @@ namespace Samples.Example
         [SerializeField] private Button scrollToBottomButton;
         [SerializeField] private Button scrollToIndex30Button;
 
-        [Header("CRUD UI")] 
+        [Header("CRUD UI (index-based)")] 
         [SerializeField] private InputField idInput;
         [SerializeField] private InputField nameInput;
         [SerializeField] private Button addButton;
         [SerializeField] private Button updateButton;
         [SerializeField] private Button deleteButton;
         [SerializeField] private Button sortButton;
+        [SerializeField] private Button clearButton;
+
+        [Header("INSERT UI")]
+        [SerializeField] private InputField insertIndexInput;
+        [SerializeField] private InputField insertNameInput;
+        [SerializeField] private Button insertButton;
+
+        [Header("MOVE UI")]
+        [SerializeField] private InputField moveFromInput;
+        [SerializeField] private InputField moveToInput;
+        [SerializeField] private InputField moveCountInput;
+        [SerializeField] private Button moveButton;
+
+        [Header("SCROLL TO INDEX UI")]
+        [SerializeField] private InputField scrollIndexInput;
+        [SerializeField] private Button scrollToIndexButton;
 
         [Header("Layout Settings")]
         [Min(0f)] [SerializeField] private float itemHeight = 150f;
@@ -39,15 +56,19 @@ namespace Samples.Example
         [Min(0)] [SerializeField] private int overscanBefore = 0;
         [Min(0)] [SerializeField] private int overscanAfter  = 0;
 
+        // Drag & Drop state
+        private bool _isDragging;
+        private int _dragFromIndex = -1;
+
         private ComponentPool<UserCell> _pool;
         private IVirtualDataSource<User> _dataSource;
         private IViewAdapter<User, UserCell> _adapter;
-        private readonly HashSet<int> _usedIds = new();
         private bool _sortAsc = true;
 
         private void Awake()
         {
             _pool = new ComponentPool<UserCell>(prefab, parent, preWarm: 16, capacity: 32);
+            // Ключ не используется в CRUD-операциях (работаем по индексах). Если у VirtualDataSource есть конструктор без ключа — используйте его.
             _dataSource = new VirtualDataSource<User>(user => user.Id.ToString());
 
             _adapter = new VerticalViewAdapter<User, UserCell>();
@@ -58,8 +79,8 @@ namespace Samples.Example
             var initial = new List<User>(100);
             for (var i = 0; i < 100; i++)
             {
-                var id = GenerateUid();
-                initial.Add(new User(id, $"User {i}"));
+                // Id используется только как поле модели; все операции делаем по index
+                initial.Add(new User(i, $"User {i}"));
             }
             _dataSource.SetItems(initial);
 
@@ -72,6 +93,14 @@ namespace Samples.Example
             deleteButton.onClick.AddListener(OnDeleteClicked);
             
             sortButton.onClick.AddListener(OnSortClicked);
+            clearButton.onClick.AddListener(OnClearClicked);
+
+            insertButton.onClick.AddListener(OnInsertClicked);
+            moveButton.onClick.AddListener(OnMoveClicked);
+            scrollToIndexButton.onClick.AddListener(OnScrollToIndexClicked);
+
+            UserCell.OnBeginDragEvent += OnCellBeginDrag;
+            UserCell.OnDropEvent += OnCellDrop;
         }
 
         private void OnValidate()
@@ -92,18 +121,6 @@ namespace Samples.Example
             if (label != null)
                 label.text = _sortAsc ? "Sort Name ASC" : "Sort Name DESC";
         }
-
-        private int GenerateUid()
-        {
-            int uid;
-            int guard = 0;
-            do
-            {
-                uid = Random.Range(100000, 999999);
-            } while (_usedIds.Contains(uid) && ++guard < 1000);
-            _usedIds.Add(uid);
-            return uid;
-        }
         
         private static readonly IComparer<User> NameAscComparer = Comparer<User>.Create(
             (a, b) => string.Compare(a?.Name, b?.Name, StringComparison.Ordinal));
@@ -116,55 +133,191 @@ namespace Samples.Example
             _dataSource.Sort(comparer);
         }
 
-        private bool TryParseId(out int id)
+        private bool TryParseIndex(out int index)
         {
-            id = 0;
-            return idInput && int.TryParse(idInput.text, out id);
+            index = 0;
+            return idInput && int.TryParse(idInput.text, out index);
+        }
+
+        private static bool TryParse(InputField input, out int value)
+        {
+            value = 0;
+            return input && int.TryParse(input.text, out value);
+        }
+
+        private int ClampIndex(int index, bool allowEnd = false)
+        {
+            return Mathf.Clamp(index, 0, allowEnd ? _dataSource.Count : Mathf.Max(0, _dataSource.Count - 1));
         }
 
         private void OnAddClicked()
         {
-            if (!TryParseId(out var id)) return;
-            var name = nameInput ? nameInput.text : $"User {id}";
-            
-            if (_dataSource.TryGetIndexById(id.ToString(), out var index))
-            {
-                var updated = new User(id, name);
-                _dataSource.UpdateAt(index, updated);
-            }
-            else
-            {
-                var list = new List<User>(_dataSource.Count + 1);
-                for (int i = 0; i < _dataSource.Count; i++)
-                    list.Add(_dataSource[i]);
-                list.Add(new User(id, name));
-                _dataSource.SetItems(list);
-            }
-            
+            if (!TryParseIndex(out var index)) return;
+            var name = nameInput ? nameInput.text : $"User {index}";
+
+            // Сформируем новый список, вставляя по индексу (или добавим в конец, если индекс больше Count)
+            var newList = new List<User>(_dataSource.Count + 1);
+            for (int i = 0; i < _dataSource.Count; i++)
+                newList.Add(_dataSource[i]);
+
+            index = Mathf.Clamp(index, 0, newList.Count);
+            newList.Insert(index, new User(index, name));
+
+            // Перенумерация Id поля модели необязательна, но для наглядности можно синхронизировать с индексом
+            for (int i = 0; i < newList.Count; i++)
+                newList[i] = new User(i, newList[i].Name);
+
+            _dataSource.SetItems(newList);
+
             Debug.LogWarning(_dataSource.Count);
         }
 
         private void OnUpdateClicked()
         {
-            if (!TryParseId(out var id)) return;
-            var name = nameInput ? nameInput.text : $"User {id}";
-            
-            var updated = new User(id, name);
-            _dataSource.UpdateById(id.ToString(), updated);
-            
+            if (!TryParseIndex(out var index)) return;
+            if (index < 0 || index >= _dataSource.Count) return;
+
+            var name = nameInput ? nameInput.text : $"User {index}";
+            var updated = new User(index, name);
+            _dataSource.UpdateAt(index, updated);
+
             Debug.LogWarning(_dataSource.Count);
         }
 
         private void OnDeleteClicked()
         {
-            if (!TryParseId(out var id)) return;
-            if (_dataSource.TryGetIndexById(id.ToString(), out var index))
+            if (!TryParseIndex(out var index)) return;
+            if (index < 0 || index >= _dataSource.Count) return;
+
+            _dataSource.RemoveAt(index);
+
+            // (опционально) Перенумеруем Id для наглядности соответствию индексу
+            var list = new List<User>(_dataSource.Count);
+            for (int i = 0; i < _dataSource.Count; i++)
             {
-                _dataSource.RemoveAt(index);
-                _usedIds.Remove(id);
+                var u = _dataSource[i];
+                list.Add(new User(i, u.Name));
             }
-            
+            _dataSource.SetItems(list);
+
             Debug.LogWarning(_dataSource.Count);
+        }
+
+        private void OnInsertClicked()
+        {
+            if (!TryParse(insertIndexInput, out var index)) return;
+            var name = insertNameInput && !string.IsNullOrEmpty(insertNameInput.text)
+                ? insertNameInput.text
+                : $"User {index}";
+
+            // Собираем новый список и вставляем по индексу (с допуском вставки в конец)
+            var list = new List<User>(_dataSource.Count + 1);
+            for (int i = 0; i < _dataSource.Count; i++)
+                list.Add(_dataSource[i]);
+
+            index = Mathf.Clamp(index, 0, list.Count);
+            list.Insert(index, new User(index, name));
+
+            // Опционально: синхронизируем Id с индексом для наглядности
+            for (int i = 0; i < list.Count; i++)
+                list[i] = new User(i, list[i].Name);
+
+            _dataSource.SetItems(list);
+            Debug.LogWarning($"Inserted at {index}. Count={_dataSource.Count}");
+        }
+
+        private void OnMoveClicked()
+        {
+            if (!TryParse(moveFromInput, out var from)) return;
+            if (!TryParse(moveToInput, out var to)) return;
+            if (!TryParse(moveCountInput, out var count)) count = 1;
+            count = Mathf.Max(1, count);
+
+            if (_dataSource.Count == 0) return;
+            from = ClampIndex(from);
+            to = ClampIndex(to);
+
+            // Кламп по count, чтобы не выходить за границы
+            count = Mathf.Min(count, _dataSource.Count - from);
+            if (count <= 0) return;
+
+            _dataSource.Move(from, to, count);
+
+            // Опционально: синхронизируем Id с индексом
+            var list = new List<User>(_dataSource.Count);
+            for (int i = 0; i < _dataSource.Count; i++)
+            {
+                var u = _dataSource[i];
+                list.Add(new User(i, u.Name));
+            }
+            _dataSource.SetItems(list);
+
+            Debug.LogWarning($"Moved {count} item(s) from {from} to {to}. Count={_dataSource.Count}");
+        }
+
+        private void OnScrollToIndexClicked()
+        {
+            if (!TryParse(scrollIndexInput, out var index)) return;
+            if (_adapter == null) return;
+
+            index = ClampIndex(index);
+            _adapter.ScrollToIndex(index, ScrollAlign.Start);
+        }
+
+        private void OnClearClicked()
+        {
+            _dataSource.Clear();
+            Debug.LogWarning("Data source cleared");
+        }
+
+        private int ScreenPointToIndex(Vector2 screenPoint)
+        {
+            if (_dataSource == null || _dataSource.Count == 0) return 0;
+
+            // Convert to local point in content space
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(content, screenPoint, null, out var local))
+                return 0;
+
+            // In our layout, content pivot Y = 1 (top). Local Y is negative when going down.
+            var topToPoint = -local.y; // distance from content top in px
+            var y = Mathf.Max(0f, topToPoint - paddingTop);
+            var step = Mathf.Max(1f, itemHeight + spacing);
+            var index = Mathf.FloorToInt(y / step);
+            return Mathf.Clamp(index, 0, Mathf.Max(0, _dataSource.Count - 1));
+        }
+
+        private void OnCellBeginDrag(UserCell cell, int index)
+        {
+            _isDragging = true;
+            _dragFromIndex = index;
+        }
+
+        private void OnCellDrop(UserCell cell, int fromIndex, int _)
+        {
+            if (!_isDragging) return;
+            _isDragging = false;
+
+            // Determine target index from current mouse position
+            var target = ScreenPointToIndex(Input.mousePosition);
+
+            // Single-item move for now; adjust insert index when moving down
+            if (target > _dragFromIndex) target -= 1;
+            target = ClampIndex(target);
+
+            if (target == _dragFromIndex) return;
+
+            _dataSource.Move(_dragFromIndex, target, 1);
+
+            // Optional: renumber Id for clarity to match indices
+            var list = new List<User>(_dataSource.Count);
+            for (int i = 0; i < _dataSource.Count; i++)
+            {
+                var u = _dataSource[i];
+                list.Add(new User(i, u.Name));
+            }
+            _dataSource.SetItems(list);
+
+            _dragFromIndex = -1;
         }
 
         private void OnDestroy()
@@ -176,6 +329,14 @@ namespace Samples.Example
             addButton?.onClick.RemoveAllListeners();
             updateButton?.onClick.RemoveAllListeners();
             deleteButton?.onClick.RemoveAllListeners();
+            clearButton?.onClick.RemoveAllListeners();
+
+            insertButton?.onClick.RemoveAllListeners();
+            moveButton?.onClick.RemoveAllListeners();
+            scrollToIndexButton?.onClick.RemoveAllListeners();
+
+            UserCell.OnBeginDragEvent -= OnCellBeginDrag;
+            UserCell.OnDropEvent -= OnCellDrop;
 
             _adapter?.Destroy();
             _pool?.Dispose();

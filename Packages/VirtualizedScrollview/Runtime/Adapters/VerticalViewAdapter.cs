@@ -32,7 +32,24 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
         private int _overscanAfterItems;  
         
         private int _lastCount;
+        private bool _layoutDirty;
 
+        // === Helpers (refactoring) ===
+        private void SnapshotVisibleKeys()
+        {
+            _toRemove.Clear();
+            foreach (var kv in _visible)
+                _toRemove.Add(kv.Key);
+        }
+
+        private void ReleaseAndRemoveVisibleIndex(int index)
+        {
+            var cell = _visible[index];
+            SafeUnbind(cell);
+            _pool.Release(cell);
+            _visible.Remove(index);
+        }
+        
         public (int start, int end) VisibleRange { get; private set; } = (-1, -1);
         
         public int TotalCount => _data?.Count ?? 0;
@@ -54,8 +71,16 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             _data.Changed += OnDataChanged;
 
             _lastCount = TotalCount;
+            _layoutDirty = true;
 
             RebuildCaches();
+
+            var avgItem = (_heights.Count > 0) ? (_prefix[_heights.Count] / _heights.Count) : Mathf.Max(1f, _itemHeight);
+            var estimatedVisible = Mathf.Clamp(Mathf.CeilToInt((_viewport.rect.height > 0 ? _viewport.rect.height : avgItem * 8f) / Mathf.Max(1f, avgItem)), 1, Math.Max(1, TotalCount));
+            var estimatedWorkingSet = estimatedVisible + _overscanBeforeItems + _overscanAfterItems + 4;
+            if (_toRemove.Capacity < estimatedWorkingSet)
+                _toRemove.Capacity = estimatedWorkingSet;
+
             Refresh(keepScrollPosition: false);
         }
 
@@ -66,6 +91,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             _paddingTop = Mathf.Max(0f, paddingTop);
             _paddingBottom = Mathf.Max(0f, paddingBottom);
 
+            MarkLayoutDirty();
             RebuildCaches();
             Refresh();
         }
@@ -74,6 +100,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
         {
             _getDynamicHeight = getHeight;
             
+            MarkLayoutDirty();
             RebuildCaches();
             Refresh();
         }
@@ -94,34 +121,31 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             
             UpdateContentSize();
             
-            _toRemove.Clear();
-            
-            foreach (var kv in _visible)
-            {
-                _toRemove.Add(kv.Key);
-            }
-            
+            SnapshotVisibleKeys();
             foreach (var idx in _toRemove)
             {
-                var cell = _visible[idx];
-                SafeUnbind(cell);
-                
-                _pool.Release(cell);
-                _visible.Remove(idx);
+                ReleaseAndRemoveVisibleIndex(idx);
             }
-            
             _toRemove.Clear();
 
+            // We've just cleared all realized cells; force recompute on next UpdateVisible
+            VisibleRange = (-1, -1);
+
             _scroll.normalizedPosition = keepScrollPosition ? savedNormPos : new Vector2(0f, 1f);
+
+            EnsureLayoutReady();
 
             UpdateVisible();
         }
 
         public void ScrollToIndex(int index, ScrollAlign align = ScrollAlign.Start)
         {
-            if (_scroll == null || TotalCount == 0) return;
-            
-            index = Mathf.Clamp(index, 0, TotalCount - 1);
+            if (_scroll == null) return;
+
+            var n = _heights.Count;
+            if (n <= 0) return;
+
+            index = Mathf.Clamp(index, 0, n - 1);
 
             var alignValue = align switch
             {
@@ -131,8 +155,10 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
                 _ => 0f
             };
 
+            EnsureLayoutReady();
+
             var targetY = GetItemTopY(index);
-            var itemSize = GetItemFullHeight(index);
+            var itemSize = _heights[index];
 
             var viewportHeight = _viewport.rect.height;
             var contentHeight = _content.rect.height;
@@ -147,17 +173,80 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
 
         public void ScrollToStart() => ScrollToIndex(0);
         
-        public void ScrollToEnd() => ScrollToIndex(TotalCount - 1, ScrollAlign.End);
+        public void ScrollToEnd()
+        {
+            var n = _heights.Count;
+            if (n > 0) ScrollToIndex(n - 1, ScrollAlign.End);
+        }
 
         private void OnScrollChanged(Vector2 _) => UpdateVisible();
 
         private void OnDataChanged(IReadOnlyList<DataChange<T>> changes)
         {
-            var hadItemsBefore = _lastCount > 0;
-            
+            // 1) Snapshot current visual anchor: first visible index and its intra-item offset
+            var hadItemsBefore = _heights.Count > 0;
+
+            int anchorIndex = Mathf.Max(0, VisibleRange.start);
+
+            // Compute current viewportTop in content coordinates
+            var viewportHeight = _viewport.rect.height;
+            var contentHeight = _content.rect.height;
+            var normalizedY = _scroll.normalizedPosition.y;
+            if (float.IsNaN(normalizedY)) normalizedY = 1f;
+            var maxOffset = Mathf.Max(0f, contentHeight - viewportHeight);
+            var viewportTop = (1f - normalizedY) * maxOffset;
+
+            // Intra-item offset from the top of the first visible item
+            float anchorOffset = 0f;
+            if (hadItemsBefore && anchorIndex >= 0 && anchorIndex < _prefix.Count)
+            {
+                var itemTop = GetItemTopY(anchorIndex);
+                anchorOffset = Mathf.Max(0f, viewportTop - itemTop);
+            }
+
+            // 2) Rebuild caches/content size
+            _layoutDirty = true;
             RebuildCaches();
-            Refresh(keepScrollPosition: hadItemsBefore);
-            
+            UpdateContentSize();
+
+            // 3) Restore the same visual anchor (best effort)
+            var n = _heights.Count;
+            if (n > 0)
+            {
+                anchorIndex = Mathf.Clamp(anchorIndex, 0, n - 1);
+                var newTop = GetItemTopY(anchorIndex) + anchorOffset;
+
+                var newViewportHeight = _viewport.rect.height;
+                var newContentHeight = _content.rect.height;
+                var newMaxOffset = Mathf.Max(0f, newContentHeight - newViewportHeight);
+                var clampedTop = Mathf.Clamp(newTop, 0f, newMaxOffset);
+                var newNormalized = newContentHeight <= newViewportHeight ? 1f : 1f - Mathf.Clamp01(clampedTop / newMaxOffset);
+
+                _scroll.normalizedPosition = new Vector2(0f, newNormalized);
+            }
+
+            // 3.5) Rebind currently visible cells to reflect potential reordering (sorting)
+            // Ensure layout first so positions are valid for PositionCell
+            EnsureLayoutReady();
+            var needed = ComputeVisibleIndices();
+            if (needed.start >= 0)
+            {
+                // Rebind and reposition cells that remain visible at the same indexes
+                foreach (var kv in _visible)
+                {
+                    int idx = kv.Key;
+                    if (idx < needed.start || idx > needed.end) continue;
+                    var cell = kv.Value;
+                    PositionCell(cell.Rect, idx);
+                    var itemNow = _data[idx];
+                    cell.Bind(itemNow, idx);
+                }
+            }
+
+            // 4) Ensure layout once and update visible
+            EnsureLayoutReady();
+            UpdateVisible();
+
             _lastCount = TotalCount;
         }
 
@@ -173,102 +262,113 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             _prefix.Capacity = Math.Max(_prefix.Capacity, n + 1);
 
             _prefix.Add(0f);
-            
+
             for (var i = 0; i < n; i++)
             {
-                var h = GetItemFullHeight(i);
+                var core = GetItemCoreHeight(i);
+                var h = i < n - 1 ? core + _spacing : core;
                 _heights.Add(h);
                 _prefix.Add(_prefix[i] + h);
             }
         }
 
-        private float GetItemFullHeight(int index)
+        private float GetItemCoreHeight(int index)
         {
-            var core = _getDynamicHeight != null ? Mathf.Max(0f, _getDynamicHeight(index)) : _itemHeight;
-            
-            return (index < TotalCount - 1) ? core + _spacing : core;
+            return _getDynamicHeight != null ? Mathf.Max(0f, _getDynamicHeight(index)) : _itemHeight;
         }
 
-        private float GetItemsRangeHeight(int start, int endInclusive)
+        private float GetItemFullHeight(int index)
         {
-            if (TotalCount == 0 || start > endInclusive) return 0f;
-            
-            var sum = _prefix[endInclusive + 1] - _prefix[start];
-            
-            return sum;
+            if (index >= 0 && index < _heights.Count)
+                return _heights[index];
+
+            var n = _heights.Count > 0 ? _heights.Count : TotalCount;
+            var core = GetItemCoreHeight(index);
+            return index < n - 1 ? core + _spacing : core;
         }
 
         private float GetItemTopY(int index) => _paddingTop + _prefix[index];
 
         private void UpdateContentSize()
         {
-            var items = TotalCount > 0 ? _prefix[TotalCount] : 0f;
+            var items = _prefix.Count > 0 ? _prefix[_prefix.Count - 1] : 0f;
             var height = _paddingTop + items + _paddingBottom;
 
             var size = _content.sizeDelta;
             size.y = height;
             
             _content.sizeDelta = size;
+
+            MarkLayoutDirty();
         }
 
         private (int start, int end) ComputeVisibleIndices()
         {
-            if (TotalCount <= 0) return (-1, -1);
-            
-            EnsureLayoutReady();
+            var n = _heights.Count;
+            if (n <= 0) return (-1, -1);
 
+            // Do not force layout rebuilds here; they are done only when explicitly marked dirty
             var viewportHeight = _viewport.rect.height;
-            
             var contentHeight = _content.rect.height;
             var normalizedY = _scroll.normalizedPosition.y;
+            if (float.IsNaN(normalizedY)) normalizedY = 1f;
             var maxOffset = Mathf.Max(0f, contentHeight - viewportHeight);
             var viewportTop = (1f - normalizedY) * maxOffset;
-            
+
             var top = viewportTop;
             var bottom = viewportTop + viewportHeight;
-            
+
             if (viewportHeight <= 1f)
             {
                 var avgItem = (_heights.Count > 0) ? (_prefix[_heights.Count] / _heights.Count) : Mathf.Max(1f, _itemHeight);
                 var guessViewport = Mathf.Max(avgItem, avgItem * 8f);
 
                 var startGuess = 0;
-                var itemsToFill = Mathf.Clamp(Mathf.CeilToInt(guessViewport / Mathf.Max(1f, avgItem)), 1, TotalCount);
-                var endGuess = Mathf.Min(TotalCount - 1, itemsToFill - 1);
-                
-                startGuess = Mathf.Clamp(startGuess - _overscanBeforeItems, 0, Math.Max(0, TotalCount - 1));
-                endGuess = Mathf.Clamp(endGuess   + _overscanAfterItems,  startGuess, TotalCount - 1);
+                var itemsToFill = Mathf.Clamp(Mathf.CeilToInt(guessViewport / Mathf.Max(1f, avgItem)), 1, n);
+                var endGuess = Mathf.Min(n - 1, itemsToFill - 1);
+
+                startGuess = Mathf.Clamp(startGuess - _overscanBeforeItems, 0, Math.Max(0, n - 1));
+                endGuess = Mathf.Clamp(endGuess   + _overscanAfterItems,  startGuess, n - 1);
 
                 return (startGuess, endGuess);
             }
 
             var start = LowerBoundPrefix(top - _paddingTop);
             var end = UpperBoundPrefix(bottom - _paddingTop) - 1;
-            
-            start = Mathf.Clamp(start - _overscanBeforeItems, 0, Math.Max(0, TotalCount - 1));
-            end = Mathf.Clamp(end + _overscanAfterItems, start, TotalCount - 1);
+
+            start = Mathf.Clamp(start - _overscanBeforeItems, 0, Math.Max(0, n - 1));
+            end = Mathf.Clamp(end + _overscanAfterItems, start, n - 1);
 
             return (start, end);
         }
 
+        private void MarkLayoutDirty()
+        {
+            _layoutDirty = true;
+        }
+
         private void EnsureLayoutReady()
         {
+            if (!_layoutDirty) return;
             try
             {
                 Canvas.ForceUpdateCanvases();
-                
                 if (_viewport) LayoutRebuilder.ForceRebuildLayoutImmediate(_viewport);
-                if (_content) LayoutRebuilder.ForceRebuildLayoutImmediate(_content);
+                if (_content)  LayoutRebuilder.ForceRebuildLayoutImmediate(_content);
             }
             catch (Exception ex)
             {
                 Debug.LogException(ex);
             }
+            finally
+            {
+                _layoutDirty = false;
+            }
         }
         
         private int LowerBoundPrefix(float value)
         {
-            int lo = 0, hi = TotalCount;
+            int lo = 0, hi = _heights.Count;
             while (lo < hi)
             {
                 var mid = (lo + hi) >> 1;
@@ -287,7 +387,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
 
         private int UpperBoundPrefix(float value)
         {
-            int lo = 0, hi = TotalCount;
+            int lo = 0, hi = _heights.Count;
             while (lo < hi)
             {
                 var mid = (lo + hi) >> 1;
@@ -306,7 +406,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
 
         private void UpdateVisible()
         {
-            if (TotalCount <= 0)
+            if (_heights.Count <= 0)
             {
                 HideAll();
                 VisibleRange = (-1, -1);
@@ -314,6 +414,11 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             }
 
             var (needStart, needEnd) = ComputeVisibleIndices();
+
+            if (needStart == VisibleRange.start && needEnd == VisibleRange.end)
+            {
+                return;
+            }
             
             _toRemove.Clear();
             
@@ -328,11 +433,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             
             foreach (var idx in _toRemove)
             {
-                var cell = _visible[idx];
-                SafeUnbind(cell);
-                
-                _pool.Release(cell);
-                _visible.Remove(idx);
+                ReleaseAndRemoveVisibleIndex(idx);
             }
             
             _toRemove.Clear();
@@ -355,22 +456,11 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
 
         private void HideAll()
         {
-            _toRemove.Clear();
-            
-            foreach (var kv in _visible)
-            {
-                _toRemove.Add(kv.Key);
-            }
-            
+            SnapshotVisibleKeys();
             foreach (var idx in _toRemove)
             {
-                var cell = _visible[idx];
-                SafeUnbind(cell);
-                
-                _pool.Release(cell);
-                _visible.Remove(idx);
+                ReleaseAndRemoveVisibleIndex(idx);
             }
-            
             _toRemove.Clear();
         }
 
@@ -380,10 +470,10 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             var heightCore = _getDynamicHeight?.Invoke(index) ?? _itemHeight;
 
             rect.anchorMin = new Vector2(0f, 1f);
-            rect.anchorMax = new Vector2(1f, 1f);  
+            rect.anchorMax = new Vector2(1f, 1f);
             rect.pivot = new Vector2(0.5f, 1f);
-            rect.offsetMin = new Vector2(0f, rect.offsetMin.y);
-            rect.offsetMax = new Vector2(0f, rect.offsetMax.y);
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
             rect.sizeDelta = new Vector2(0f, heightCore);
             rect.anchoredPosition = new Vector2(0f, -topY);
         }
@@ -405,22 +495,11 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             if (_data != null) _data.Changed -= OnDataChanged;
             if (_scroll != null) _scroll.onValueChanged.RemoveListener(OnScrollChanged);
             
-            _toRemove.Clear();
-            
-            foreach (var kv in _visible)
-            {
-                _toRemove.Add(kv.Key);
-            }
-            
+            SnapshotVisibleKeys();
             foreach (var idx in _toRemove)
             {
-                var cell = _visible[idx];
-                SafeUnbind(cell);
-                
-                _pool.Release(cell);
-                _visible.Remove(idx);
+                ReleaseAndRemoveVisibleIndex(idx);
             }
-            
             _toRemove.Clear();
 
             _scroll = null;

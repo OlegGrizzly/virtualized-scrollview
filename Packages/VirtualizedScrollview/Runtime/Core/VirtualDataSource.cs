@@ -32,6 +32,11 @@ namespace OlegGrizzly.VirtualizedScrollview.Core
         
         public void Insert(int index, T item)
         {
+            if (index < 0 || index > _list.Count)
+            {
+                throw new ArgumentOutOfRangeException(nameof(index), $"Index must be in range [0..{_list.Count}].");
+            }
+            
             var id = EnsureUniqueId(item);
             _list.Insert(index, new Entry(id, item));
             
@@ -42,6 +47,10 @@ namespace OlegGrizzly.VirtualizedScrollview.Core
         public void RemoveAt(int index, int count = 1)
         {
             if (count <= 0) return;
+            if (index < 0 || index > _list.Count)
+            {
+                throw new ArgumentOutOfRangeException(nameof(index));
+            }
             
             var max = Math.Min(count, _list.Count - index);
             if (max <= 0) return;
@@ -59,6 +68,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Core
         public bool RemoveById(string id)
         {
             if (!_indexById.TryGetValue(id, out var index)) return false;
+            
             RemoveAt(index);
             
             return true;
@@ -66,6 +76,11 @@ namespace OlegGrizzly.VirtualizedScrollview.Core
         
         public void UpdateAt(int index, T newItem)
         {
+            if (index < 0 || index >= _list.Count)
+            {
+                throw new ArgumentOutOfRangeException(nameof(index));
+            }
+            
             var old = _list[index];
             var newId = _keySelector(newItem);
             if (newId != old.Id)
@@ -90,28 +105,24 @@ namespace OlegGrizzly.VirtualizedScrollview.Core
         {
             if (count <= 0 || fromIndex == toIndex) return;
 
-            if (fromIndex < 0 || fromIndex + count > _list.Count)
-            {
-                throw new ArgumentOutOfRangeException(nameof(fromIndex));
-            }
+            var n = _list.Count;
+            if (fromIndex < 0 || fromIndex >= n) throw new ArgumentOutOfRangeException(nameof(fromIndex));
+            if (count > n - fromIndex) throw new ArgumentOutOfRangeException(nameof(count));
+            if (toIndex < 0 || toIndex > n) throw new ArgumentOutOfRangeException(nameof(toIndex));
             
-            if (toIndex < 0 || toIndex > _list.Count)
-            {
-                throw new ArgumentOutOfRangeException(nameof(toIndex));
-            }
-
+            if (toIndex >= fromIndex && toIndex < fromIndex + count) return;
+            
             var block = _list.GetRange(fromIndex, count);
-            
             _list.RemoveRange(fromIndex, count);
-            if (toIndex > fromIndex)
-            {
-                toIndex -= count;
-            }
             
-            _list.InsertRange(toIndex, block);
+            var newCount = n - count;
+            var finalTo = toIndex;
+            if (finalTo > newCount) finalTo = newCount;
             
-            ReindexFrom(Math.Min(fromIndex, toIndex));
-            Emit(DataChange<T>.MakeMove(fromIndex, toIndex, count));
+            _list.InsertRange(finalTo, block);
+
+            ReindexFrom(Math.Min(fromIndex, finalTo));
+            Emit(DataChange<T>.MakeMove(fromIndex, finalTo, count));
         }
         
         public void Sort(IComparer<T> comparer)
@@ -141,7 +152,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Core
             if (items == null) throw new ArgumentNullException(nameof(items));
             
             var target = new List<Entry>();
-            var seen = new HashSet<string>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
             foreach (var it in items)
             {
                 var id = _keySelector(it) ?? throw new InvalidOperationException("Key selector returned null.");
@@ -233,7 +244,6 @@ namespace OlegGrizzly.VirtualizedScrollview.Core
                     }
                 }
                 
-                // If detectMoves == false, just insert.
                 _list.Insert(t, target[t]);
                 
                 ReindexFrom(t);
@@ -326,6 +336,8 @@ namespace OlegGrizzly.VirtualizedScrollview.Core
             if (changes.Count == 0) return;
             
             Changed?.Invoke(changes);
+            
+            _cachePool.Clear();
         }
         
         private IReadOnlyList<DataChange<T>> _cacheList(DataChange<T> c)
