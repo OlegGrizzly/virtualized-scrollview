@@ -3,13 +3,12 @@ using System.Collections.Generic;
 using OlegGrizzly.VirtualizedScrollview.Abstractions;
 using OlegGrizzly.VirtualizedScrollview.Core.Data;
 using OlegGrizzly.VirtualizedScrollview.Core.Pooling;
-using OlegGrizzly.VirtualizedScrollview.Core.View;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace OlegGrizzly.VirtualizedScrollview.Adapters
 {
-    public sealed class VerticalViewAdapter<T, TCell> : IViewAdapter<T, TCell> where TCell : VirtualCell<T>
+    public sealed class VerticalViewAdapter<T, TCell> : IViewAdapter<T, TCell> where TCell : Component, IVirtualCell<T>
     {
         private ScrollRect _scroll;
         private RectTransform _viewport;
@@ -25,15 +24,19 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
         private float _paddingTop;
         private float _paddingBottom;
         
+        private (int start, int end) VisibleRange { get; set; } = (-1, -1);
+        
         private Func<int, float> _getDynamicHeight;
 
         private readonly List<float> _heights = new();
         private readonly List<float> _prefix = new();
         
-        private int _overscanBeforeItems; 
-        private int _overscanAfterItems;  
+        private int _bufferBeforeItems; 
+        private int _bufferAfterItems;  
         
         private bool _layoutDirty;
+        
+        private int TotalCount => _data?.Count ?? 0;
         
         private void SnapshotVisibleKeys()
         {
@@ -49,10 +52,6 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             _pool.Release(cell);
             _visible.Remove(index);
         }
-        
-        public (int start, int end) VisibleRange { get; private set; } = (-1, -1);
-        
-        public int TotalCount => _data?.Count ?? 0;
 
         public void Initialize(ScrollRect scroll, RectTransform content, ComponentPool<TCell> pool, IVirtualDataSource<T> dataSource)
         {
@@ -76,7 +75,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
 
             var avgItem = (_heights.Count > 0) ? (_prefix[_heights.Count] / _heights.Count) : Mathf.Max(1f, _itemHeight);
             var estimatedVisible = Mathf.Clamp(Mathf.CeilToInt((_viewport.rect.height > 0 ? _viewport.rect.height : avgItem * 8f) / Mathf.Max(1f, avgItem)), 1, Math.Max(1, TotalCount));
-            var estimatedWorkingSet = estimatedVisible + _overscanBeforeItems + _overscanAfterItems + 4;
+            var estimatedWorkingSet = estimatedVisible + _bufferBeforeItems + _bufferAfterItems + 4;
             if (_toRemove.Capacity < estimatedWorkingSet)
                 _toRemove.Capacity = estimatedWorkingSet;
 
@@ -104,10 +103,10 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             Refresh();
         }
         
-        public void SetOverscanItems(int before, int after)
+        public void SetBufferItems(int before, int after)
         {
-            _overscanBeforeItems = Mathf.Max(0, before);
-            _overscanAfterItems  = Mathf.Max(0, after);
+            _bufferBeforeItems = Mathf.Max(0, before);
+            _bufferAfterItems  = Mathf.Max(0, after);
             
             UpdateVisible();
         }
@@ -278,7 +277,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
 
         private void UpdateContentSize()
         {
-            var items = _prefix.Count > 0 ? _prefix[_prefix.Count - 1] : 0f;
+            var items = _prefix.Count > 0 ? _prefix[^1] : 0f;
             var height = _paddingTop + items + _paddingBottom;
 
             var size = _content.sizeDelta;
@@ -313,8 +312,8 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
                 var itemsToFill = Mathf.Clamp(Mathf.CeilToInt(guessViewport / Mathf.Max(1f, avgItem)), 1, n);
                 var endGuess = Mathf.Min(n - 1, itemsToFill - 1);
 
-                startGuess = Mathf.Clamp(startGuess - _overscanBeforeItems, 0, Math.Max(0, n - 1));
-                endGuess = Mathf.Clamp(endGuess   + _overscanAfterItems,  startGuess, n - 1);
+                startGuess = Mathf.Clamp(startGuess - _bufferBeforeItems, 0, Math.Max(0, n - 1));
+                endGuess = Mathf.Clamp(endGuess   + _bufferAfterItems,  startGuess, n - 1);
 
                 return (startGuess, endGuess);
             }
@@ -322,8 +321,8 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             var start = LowerBoundPrefix(top - _paddingTop);
             var end = UpperBoundPrefix(bottom - _paddingTop) - 1;
 
-            start = Mathf.Clamp(start - _overscanBeforeItems, 0, Math.Max(0, n - 1));
-            end = Mathf.Clamp(end + _overscanAfterItems, start, n - 1);
+            start = Mathf.Clamp(start - _bufferBeforeItems, 0, Math.Max(0, n - 1));
+            end = Mathf.Clamp(end + _bufferAfterItems, start, n - 1);
 
             return (start, end);
         }

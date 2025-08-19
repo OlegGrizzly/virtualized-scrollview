@@ -17,6 +17,16 @@ namespace Samples.Example
         [SerializeField] private UserCell prefab;
         [SerializeField] private Transform parent;
         
+        [Header("Layout")]
+        [SerializeField] private bool usePrefabHeight = true;
+        [SerializeField] private float itemHeight = 100f;
+        [SerializeField] private float spacing = 4f;
+        [SerializeField] private float paddingTop = 8f;
+        [SerializeField] private float paddingBottom = 8f;
+        [SerializeField] private int bufferBefore = 2;
+        [SerializeField] private int bufferAfter = 2;
+        [SerializeField] private int preWarm = 8;
+
         [Header("Search")]
         [SerializeField] private InputField searchInputField;
         [SerializeField] private Button searchButton;
@@ -62,7 +72,7 @@ namespace Samples.Example
         [SerializeField] private Button clearAllButton;
 
         private IVirtualDataSource<User> _data;
-        private VerticalViewAdapter<User, UserCell> _adapter;
+        private IViewAdapter<User, UserCell> _adapter;
         private ComponentPool<UserCell> _pool;
         private readonly List<User> _initialUsers = new();
         private int _nextId = 1;
@@ -75,13 +85,13 @@ namespace Samples.Example
         {
             _data = new VirtualDataSource<User>(u => u.Id.ToString());
             
-            _pool = new ComponentPool<UserCell>(prefab, parent, preWarm: 8);
+            _pool = new ComponentPool<UserCell>(prefab, parent, preWarm: preWarm);
             _adapter = new VerticalViewAdapter<User, UserCell>();
             _adapter.Initialize(scroll, content, _pool, _data);
             
-            var itemHeight = prefab.Rect ? prefab.Rect.rect.height : 100f;
-            _adapter.SetLayout(itemHeight, spacing: 4f, paddingTop: 8f, paddingBottom: 8f);
-            _adapter.SetOverscanItems(before: 2, after: 2);
+            var finalItemHeight = usePrefabHeight && prefab && prefab.Rect ? prefab.Rect.rect.height : itemHeight;
+            _adapter.SetLayout(finalItemHeight, spacing: spacing, paddingTop: paddingTop, paddingBottom: paddingBottom);
+            _adapter.SetBufferItems(before: bufferBefore, after: bufferAfter);
 
             HookupUI();
             

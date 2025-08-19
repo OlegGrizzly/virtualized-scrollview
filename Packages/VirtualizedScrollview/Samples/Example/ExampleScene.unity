@@ -1812,7 +1812,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: -0.000038851485}
+  m_AnchoredPosition: {x: 0, y: -0.000058293343}
   m_SizeDelta: {x: 0, y: 10}
   m_Pivot: {x: 0, y: 1}
 --- !u!1 &538958376
@@ -7834,6 +7834,14 @@ MonoBehaviour:
   content: {fileID: 512339328}
   prefab: {fileID: 176498672827184809, guid: fcca8d233efde47d384b20dd05a88b7d, type: 3}
   parent: {fileID: 512339328}
+  usePrefabHeight: 1
+  itemHeight: 100
+  spacing: 10
+  paddingTop: 50
+  paddingBottom: 50
+  bufferBefore: 5
+  bufferAfter: 5
+  preWarm: 10
   searchInputField: {fileID: 1137911939}
   searchButton: {fileID: 1894206826}
   filterInputField: {fileID: 812112307}
