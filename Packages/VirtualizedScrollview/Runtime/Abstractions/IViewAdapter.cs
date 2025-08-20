@@ -23,6 +23,8 @@ namespace OlegGrizzly.VirtualizedScrollview.Abstractions
         void ScrollToEnd();
         
         void Refresh(bool keepScrollPosition = true);
+
+        float GetItemFullHeight(int index);
         
         void Destroy();
     }

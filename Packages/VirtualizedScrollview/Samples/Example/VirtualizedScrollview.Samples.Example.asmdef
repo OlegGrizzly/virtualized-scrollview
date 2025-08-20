@@ -1,7 +1,8 @@
 {
 	"name": "VirtualizedScrollview.Samples.Example",
 	"references": [
-		"VirtualizedScrollview.Runtime"
+		"VirtualizedScrollview.Runtime",
+		"Unity.TextMeshPro"
 	],
 	"optionalUnityReferences": [],
 	"includePlatforms": [],

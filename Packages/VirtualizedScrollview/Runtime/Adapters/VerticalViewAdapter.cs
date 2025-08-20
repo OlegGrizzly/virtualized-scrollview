@@ -263,13 +263,16 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             return _getDynamicHeight != null ? Mathf.Max(0f, _getDynamicHeight(index)) : _itemHeight;
         }
 
-        private float GetItemFullHeight(int index)
+        public float GetItemFullHeight(int index)
         {
             if (index >= 0 && index < _heights.Count)
+            {
                 return _heights[index];
+            }
 
             var n = _heights.Count > 0 ? _heights.Count : TotalCount;
             var core = GetItemCoreHeight(index);
+            
             return index < n - 1 ? core + _spacing : core;
         }
 

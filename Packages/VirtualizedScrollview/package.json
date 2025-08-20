@@ -12,11 +12,13 @@
   "keywords": [
     "scrollview",
     "srcollrect",
-    "virtualised",
+    "virtualized",
     "runtime",
     "tools"
   ],
-  "dependencies": {},
+  "dependencies": {
+    "com.unity.textmeshpro": "3.0.9"
+  },
   "samples": [
     {
       "displayName": "Quick Start",

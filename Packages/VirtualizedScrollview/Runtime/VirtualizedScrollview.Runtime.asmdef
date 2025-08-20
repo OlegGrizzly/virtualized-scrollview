@@ -1,5 +1,7 @@
 {
     "name": "VirtualizedScrollview.Runtime",
     "rootNamespace": "OlegGrizzly.VirtualizedScrollview",
-    "references": []
+    "references": [
+        "Unity.TextMeshPro"
+    ]
 }

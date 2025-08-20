@@ -92,6 +92,15 @@ namespace Samples.Example
             var finalItemHeight = usePrefabHeight && prefab && prefab.Rect ? prefab.Rect.rect.height : itemHeight;
             _adapter.SetLayout(finalItemHeight, spacing: spacing, paddingTop: paddingTop, paddingBottom: paddingBottom);
             _adapter.SetBufferItems(before: bufferBefore, after: bufferAfter);
+            _adapter.SetDynamicHeightProvider(index =>
+            {
+                if (index < 0 || index >= _data.Count) return finalItemHeight;
+                
+                var u = _data[index];
+                var width = content ? content.rect.width : 0f;
+                
+                return prefab ? prefab.Measure(u, width, finalItemHeight) : finalItemHeight;
+            });
 
             HookupUI();
             
