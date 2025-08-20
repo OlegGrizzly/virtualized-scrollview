@@ -36,6 +36,14 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
         
         private bool _layoutDirty;
         
+        public event Action TopLoadRequested;
+        public event Action BottomLoadRequested;
+
+        private float _topLoadThreshold = 200f;
+        private float _bottomLoadThreshold = 200f;
+        private bool _topLoadArmed = true;
+        private bool _bottomLoadArmed = true;
+        
         private int TotalCount => _data?.Count ?? 0;
 
         public void Initialize(ScrollRect scroll, RectTransform content, ComponentPool<TCell> pool, IVirtualDataSource<T> dataSource)
@@ -80,6 +88,18 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             MarkLayoutDirty();
             RebuildCaches();
             Refresh();
+        }
+        
+        public void SetLoadThresholds(float topPixels = 200f, float bottomPixels = 200f)
+        {
+            _topLoadThreshold = Mathf.Max(0f, topPixels);
+            _bottomLoadThreshold = Mathf.Max(0f, bottomPixels);
+        }
+        
+        public void ResetLoadTriggers()
+        {
+            _topLoadArmed = true;
+            _bottomLoadArmed = true;
         }
 
         public void SetDynamicHeightProvider(Func<int, float> getHeight)
@@ -128,6 +148,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
 
             EnsureLayoutReady();
             UpdateVisible();
+            CheckLoadTriggers();
         }
 
         public void ScrollToIndex(int index, ScrollAlign align = ScrollAlign.Start)
@@ -206,7 +227,11 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             _visible.Remove(index);
         }
         
-        private void OnScrollChanged(Vector2 _) => UpdateVisible();
+        private void OnScrollChanged(Vector2 _)
+        {
+            UpdateVisible();
+            CheckLoadTriggers();
+        }
 
         private void OnDataChanged(IReadOnlyList<DataChange<T>> changes)
         {
@@ -274,6 +299,61 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             
             EnsureLayoutReady();
             UpdateVisible();
+            
+            _topLoadArmed = true;
+            _bottomLoadArmed = true;
+        }
+        
+        private void CheckLoadTriggers()
+        {
+            if (_viewport == null || _content == null) return;
+
+            var viewportHeight = _viewport.rect.height;
+            var contentHeight = _content.rect.height;
+            if (viewportHeight <= 0f || contentHeight <= viewportHeight)
+            {
+                return;
+            }
+
+            var normalizedY = _scroll != null ? _scroll.normalizedPosition.y : 1f;
+            if (float.IsNaN(normalizedY))
+            {
+                normalizedY = 1f;
+            }
+
+            var maxOffset = Mathf.Max(0f, contentHeight - viewportHeight);
+            var viewportTop = (1f - normalizedY) * maxOffset;
+            var viewportBottom = viewportTop + viewportHeight;
+            
+            const float epsilon = 0.5f;
+
+            var nearTop = viewportTop <= _topLoadThreshold + epsilon;
+            if (nearTop)
+            {
+                if (_topLoadArmed)
+                {
+                    _topLoadArmed = false;
+                    TopLoadRequested?.Invoke();
+                }
+            }
+            else if (viewportTop > (_topLoadThreshold + epsilon) * 2f)
+            {
+                _topLoadArmed = true;
+            }
+
+            var nearBottom = contentHeight - viewportBottom <= _bottomLoadThreshold + epsilon;
+            if (nearBottom)
+            {
+                if (_bottomLoadArmed)
+                {
+                    _bottomLoadArmed = false;
+                    BottomLoadRequested?.Invoke();
+                }
+            }
+            else if (contentHeight - viewportBottom > (_bottomLoadThreshold + epsilon) * 2f)
+            {
+                _bottomLoadArmed = true;
+            }
         }
 
         private void RebuildCaches()

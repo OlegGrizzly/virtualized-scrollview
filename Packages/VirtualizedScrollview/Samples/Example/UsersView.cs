@@ -101,6 +101,18 @@ namespace Samples.Example
                 
                 return prefab ? prefab.Measure(u, width, finalItemHeight) : finalItemHeight;
             });
+            _adapter.SetLoadThresholds(topPixels: 0f, bottomPixels: 0f);
+            _adapter.BottomLoadRequested += () =>
+            {
+                for (var i = 0; i < 25; i++)
+                {
+                    _data.Add(MakeUser());
+                }
+                
+                UpdateCountText();
+                
+                _adapter.ResetLoadTriggers();
+            };
 
             HookupUI();
             

@@ -1812,7 +1812,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 0.0000070599467}
+  m_AnchoredPosition: {x: 0, y: 0.000026364592}
   m_SizeDelta: {x: 0, y: 10}
   m_Pivot: {x: 0, y: 1}
 --- !u!1 &538958376
@@ -7837,10 +7837,10 @@ MonoBehaviour:
   usePrefabHeight: 1
   itemHeight: 100
   spacing: 10
-  paddingTop: 50
-  paddingBottom: 50
-  bufferBefore: 5
-  bufferAfter: 5
+  paddingTop: 0
+  paddingBottom: 0
+  bufferBefore: 3
+  bufferAfter: 3
   preWarm: 10
   searchInputField: {fileID: 1137911939}
   searchButton: {fileID: 1894206826}
@@ -8155,7 +8155,7 @@ MonoBehaviour:
   m_HandleRect: {fileID: 111625083}
   m_Direction: 2
   m_Value: 0
-  m_Size: 1
+  m_Size: 0.99998206
   m_NumberOfSteps: 0
   m_OnValueChanged:
     m_PersistentCalls:
