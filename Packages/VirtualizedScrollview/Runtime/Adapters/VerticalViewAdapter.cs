@@ -99,6 +99,13 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             UpdateVisible();
         }
 
+        public void InvalidateHeights(bool keepScrollPosition = true)
+        {
+            MarkLayoutDirty();
+            RebuildCaches();
+            Refresh(keepScrollPosition);
+        }
+
         public void Refresh(bool keepScrollPosition = true)
         {
             if (_scroll == null) return;
@@ -292,7 +299,21 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             }
         }
 
-        private float GetItemCoreHeight(int index) => _getDynamicHeight != null ? Mathf.Max(0f, _getDynamicHeight(index)) : _itemHeight;
+        private float GetItemCoreHeight(int index)
+        {
+            if (_getDynamicHeight == null)
+            {
+                return _itemHeight;
+            }
+            
+            var h = _getDynamicHeight(index);
+            if (float.IsNaN(h) || float.IsInfinity(h) || h < 0f)
+            {
+                return _itemHeight;
+            }
+            
+            return h;
+        }
 
         private float GetItemTopY(int index) => _paddingTop + _prefix[index];
 
@@ -460,15 +481,16 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             
             for (var i = needStart; i <= needEnd; i++)
             {
-                if (_visible.ContainsKey(i)) continue;
-
-                var cell = _pool.Get();
-                PositionCell(cell.Rect, i);
-                
-                var item = _data[i];
-                cell.Bind(item, i);
-                
-                _visible.Add(i, cell);
+                if (!_visible.TryGetValue(i, out var cell))
+                {
+                    cell = _pool.Get();
+                    PositionCell(cell.Rect, i);
+                    
+                    var item = _data[i];
+                    cell.Bind(item, i);
+                    
+                    _visible[i] = cell;
+                }
             }
 
             VisibleRange = (needStart, needEnd);
@@ -489,7 +511,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
         private void PositionCell(RectTransform rect, int index)
         {
             var topY = GetItemTopY(index);
-            var heightCore = _getDynamicHeight?.Invoke(index) ?? _itemHeight;
+            var heightCore = GetItemCoreHeight(index);
 
             rect.anchorMin = new Vector2(0f, 1f);
             rect.anchorMax = new Vector2(1f, 1f);

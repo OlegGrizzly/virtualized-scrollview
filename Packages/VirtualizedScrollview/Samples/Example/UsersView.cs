@@ -313,6 +313,11 @@ namespace Samples.Example
             }
         }
         
+        private void OnRectTransformDimensionsChange()
+        {
+            _adapter?.InvalidateHeights();
+        }
+        
         private void OnDestroy()
         {
             _adapter?.Destroy();
