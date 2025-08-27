@@ -614,7 +614,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             }
         }
         
-        public void Destroy()
+        public void Dispose()
         {
             if (_data != null)
             {
@@ -640,6 +640,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Adapters
             _content = null;
             _pool = null;
             _data = null;
+            _getDynamicHeight = null;
             
             _heights.Clear();
             _prefix.Clear();

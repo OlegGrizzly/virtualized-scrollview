@@ -6,7 +6,7 @@ using UnityEngine.UI;
 
 namespace OlegGrizzly.VirtualizedScrollview.Abstractions
 {
-    public interface IViewAdapter<T, TCell> where TCell : Component, IVirtualCell<T>
+    public interface IViewAdapter<T, TCell> : IDisposable where TCell : Component, IVirtualCell<T>
     {
         event Action TopLoadRequested;
         
@@ -35,7 +35,5 @@ namespace OlegGrizzly.VirtualizedScrollview.Abstractions
         float GetItemFullHeight(int index);
 
         void InvalidateHeights(bool keepScrollPosition = true);
-        
-        void Destroy();
     }
 }

@@ -113,42 +113,66 @@ namespace Samples.Example
                 
                 _adapter.ResetLoadTriggers();
             };
-
-            HookupUI();
             
             Seed(1000);
             UpdateCountText();
         }
 
-        #region UI wiring
-        private void HookupUI()
+        private void OnEnable()
         {
-            if (searchButton) searchButton.onClick.AddListener(OnSearchClicked);
+            searchButton.onClick.AddListener(OnSearchClicked);
             
-            if (filterButton) filterButton.onClick.AddListener(OnFilterClicked);
+            filterButton.onClick.AddListener(OnFilterClicked);
             
-            if (resetButton) resetButton.onClick.AddListener(ResetSearchAndFilter);
+            resetButton.onClick.AddListener(ResetSearchAndFilter);
 
-            if (scrollButton) scrollButton.onClick.AddListener(OnScrollToIndexClicked);
-            if (scrollStartButton) scrollStartButton.onClick.AddListener(() => _adapter.ScrollToStart());
-            if (scrollEndButton) scrollEndButton.onClick.AddListener(() => _adapter.ScrollToEnd());
+            scrollButton.onClick.AddListener(OnScrollToIndexClicked);
+            scrollStartButton.onClick.AddListener(() => _adapter.ScrollToStart());
+            scrollEndButton.onClick.AddListener(() => _adapter.ScrollToEnd());
 
-            if (addFirstButton) addFirstButton.onClick.AddListener(AddFirst);
-            if (addLastButton) addLastButton.onClick.AddListener(AddLast);
-            if (updateButton) updateButton.onClick.AddListener(UpdateAtIndex);
-            if (deleteButton) deleteButton.onClick.AddListener(DeleteAtIndex);
+            addFirstButton.onClick.AddListener(AddFirst);
+            addLastButton.onClick.AddListener(AddLast);
+            updateButton.onClick.AddListener(UpdateAtIndex);
+            deleteButton.onClick.AddListener(DeleteAtIndex);
 
-            if (insertButton) insertButton.onClick.AddListener(InsertAtIndex);
+            insertButton.onClick.AddListener(InsertAtIndex);
 
-            if (moveButton) moveButton.onClick.AddListener(MoveRange);
+            moveButton.onClick.AddListener(MoveRange);
             
-            if (sortIdButton) sortIdButton.onClick.AddListener(SortById);
-            if (sortNameButton) sortNameButton.onClick.AddListener(SortByName);
-            if (sortAgeButton) sortAgeButton.onClick.AddListener(SortByAge);
+            sortIdButton.onClick.AddListener(SortById);
+            sortNameButton.onClick.AddListener(SortByName);
+            sortAgeButton.onClick.AddListener(SortByAge);
 
-            if (clearAllButton) clearAllButton.onClick.AddListener(() => { _data.Clear(); UpdateCountText(); });
+            clearAllButton.onClick.AddListener(() => { _data.Clear(); UpdateCountText(); });
         }
-        #endregion
+
+        private void OnDisable()
+        {
+            searchButton.onClick.RemoveListener(OnSearchClicked);
+            
+            filterButton.onClick.RemoveListener(OnFilterClicked);
+            
+            resetButton.onClick.RemoveListener(ResetSearchAndFilter);
+
+            scrollButton.onClick.RemoveListener(OnScrollToIndexClicked);
+            scrollStartButton.onClick.RemoveListener(() => _adapter.ScrollToStart());
+            scrollEndButton.onClick.RemoveListener(() => _adapter.ScrollToEnd());
+
+            addFirstButton.onClick.RemoveListener(AddFirst);
+            addLastButton.onClick.RemoveListener(AddLast);
+            updateButton.onClick.RemoveListener(UpdateAtIndex);
+            deleteButton.onClick.RemoveListener(DeleteAtIndex);
+
+            insertButton.onClick.RemoveListener(InsertAtIndex);
+
+            moveButton.onClick.RemoveListener(MoveRange);
+            
+            sortIdButton.onClick.RemoveListener(SortById);
+            sortNameButton.onClick.RemoveListener(SortByName);
+            sortAgeButton.onClick.RemoveListener(SortByAge);
+
+            clearAllButton.onClick.RemoveListener(() => { _data.Clear(); UpdateCountText(); });
+        }
 
         #region Seed & helpers
         private void Seed(int count)
@@ -332,7 +356,7 @@ namespace Samples.Example
         
         private void OnDestroy()
         {
-            _adapter?.Destroy();
+            _adapter?.Dispose();
             _pool?.Dispose();
         }
     }
