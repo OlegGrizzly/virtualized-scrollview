@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using OlegGrizzly.VirtualizedScrollview.Core.View;
 using TMPro;
 using UnityEngine;
@@ -14,7 +15,7 @@ namespace Samples.Example
 
         private User _user;
         
-        protected override void OnBound(User user, int index)
+        protected override Task OnBound(User user, int index)
         {
             _user = user;
             
@@ -22,6 +23,8 @@ namespace Samples.Example
             userIdText.text = $"{_user.Id}";
             userNameText.text = $"{_user.Name}";
             userAgeText.text = $"{_user.Age}";
+            
+            return Task.CompletedTask;
         }
 
         protected override void OnUnbound()

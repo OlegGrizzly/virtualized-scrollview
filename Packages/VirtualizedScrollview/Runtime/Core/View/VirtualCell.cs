@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using OlegGrizzly.VirtualizedScrollview.Abstractions;
 using UnityEngine;
 
@@ -13,12 +14,12 @@ namespace OlegGrizzly.VirtualizedScrollview.Core.View
         
         protected T Data { get; private set; }
 
-        public void Bind(T item, int index)
+        public async Task Bind(T item, int index)
         {
             Data = item;
             Index = index;
             
-            OnBound(item, index);
+            await OnBound(item, index);
         }
 
         public void Unbind()
@@ -29,7 +30,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Core.View
             Index = -1;
         }
         
-        protected abstract void OnBound(T item, int index);
+        protected abstract Task OnBound(T item, int index);
         
         protected virtual void OnUnbound() { }
         

@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace OlegGrizzly.VirtualizedScrollview.Abstractions
@@ -6,7 +7,7 @@ namespace OlegGrizzly.VirtualizedScrollview.Abstractions
     {
         RectTransform Rect { get; }
         
-        void Bind(T item, int index);
+        Task Bind(T item, int index);
         
         void Unbind();
     }
