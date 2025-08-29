@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using OlegGrizzly.VirtualizedScrollview.Abstractions;
 using OlegGrizzly.VirtualizedScrollview.Core.Data;
+using UnityEngine;
 
 namespace OlegGrizzly.VirtualizedScrollview.Core.Sources
 {
@@ -221,7 +222,8 @@ namespace OlegGrizzly.VirtualizedScrollview.Core.Sources
                 var id = _keySelector(it) ?? throw new InvalidOperationException("Key selector returned null.");
                 if (!seen.Add(id))
                 {
-                    throw new InvalidOperationException($"Duplicate id detected in SetItems: '{id}'.");
+                    Debug.LogWarning($"Duplicate id detected and skipped in SetItems: '{id}'.");
+                    continue;
                 }
                 
                 target.Add(new Entry(id, it));
